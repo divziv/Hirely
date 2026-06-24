@@ -234,7 +234,7 @@ export default function App() {
             </div>
             <div>
               <span className="font-extrabold tracking-tight text-white text-sm font-display flex items-center gap-1.5">
-                REDROB DISCOVERY
+                HIRELY
                 <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 rounded-full font-bold">
                   Track 01
                 </span>

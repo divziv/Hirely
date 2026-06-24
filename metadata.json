@@ -1,5 +1,5 @@
 {
-  "name": "Intelligent Candidate Discovery Platform",
+  "name": "Hirely",
   "description": "AI-powered semantic resume screening, matching scoring, and interactive hiring pipeline for global recruiters and candidates.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

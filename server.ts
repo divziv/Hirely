@@ -69,13 +69,57 @@ interface Candidate {
     leadership: number; // 1-5
     collaboration: number; // 1-5
   };
+  platformActivity?: {
+    codingScore: number;
+    profileCompleteness: number;
+    responsivenessScore: number;
+    hackathonRank?: number;
+  };
   jobId: string; // Current applied job ID
   stage: string; // "Applied" | "Shortlisted" | "Interview" | "Offer" | "Rejected"
   interviewStage?: string; // "Screening" | "Technical" | "Behavioral" | "Final" | "None"
   recruiterNotes: string;
   recruiterFeedback: string;
   appliedDate: string;
+  quickNotes?: Array<{
+    id: string;
+    text: string;
+    timestamp: string;
+    author: string;
+  }>;
+  scheduledInterview?: {
+    slotId: string;
+    date: string;
+    time: string;
+    recruiterName: string;
+    status: 'Scheduled' | 'Confirmed' | 'Completed';
+    meetingLink?: string;
+  };
+  isPriority?: boolean;
+  salaryExpectation?: number;
+  salaryOffer?: number | null;
+  structuredFeedback?: {
+    technicalProficiency: number;
+    communication: number;
+    culturalAlignment: number;
+    problemSolving: number;
+    overallRecommendation: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire';
+    additionalNotes: string;
+    submittedBy?: string;
+    submittedAt?: string;
+  };
+  skillProgress?: Record<string, 'Expert' | 'Intermediate' | 'Missing'>;
 }
+
+// Recruiter Availability Data Seed
+let RECRUITER_AVAILABILITY = [
+  { id: "slot-1", date: "2026-06-25", time: "10:00 AM", booked: false, bookedBy: null as string | null },
+  { id: "slot-2", date: "2026-06-25", time: "11:30 AM", booked: false, bookedBy: null as string | null },
+  { id: "slot-3", date: "2026-06-25", time: "02:00 PM", booked: false, bookedBy: null as string | null },
+  { id: "slot-4", date: "2026-06-26", time: "09:00 AM", booked: false, bookedBy: null as string | null },
+  { id: "slot-5", date: "2026-06-26", time: "01:30 PM", booked: false, bookedBy: null as string | null },
+  { id: "slot-6", date: "2026-06-26", time: "04:00 PM", booked: false, bookedBy: null as string | null },
+];
 
 // Seed Database
 let JOBS_DB: Job[] = [
@@ -123,12 +167,16 @@ let CANDIDATES_DB: Candidate[] = [
     ],
     resumeText: "Senior AI Specialist with 4 years of solid background. Graduated CS at IIT Bombay. Handled LLM pipeline development, sentence embeddings, semantic search, and FAISS vector indices integration. Built real-time matching engine APIs that increased parsing efficiency by 40% using python tools.",
     behavioralSignals: { ownership: 5, leadership: 4, collaboration: 5 },
+    platformActivity: { codingScore: 98, profileCompleteness: 100, responsivenessScore: 95, hackathonRank: 3 },
     jobId: "job-001",
     stage: "Shortlisted",
     interviewStage: "Technical",
     recruiterNotes: "Incredibly qualified candidate with first-tier educational background. Perfect scores in AI and Retrieval pipeline evaluation.",
     recruiterFeedback: "Displayed extreme tech ownership during general pre-screening discussion. Passionate about Redrob's proprietary LLM roadmap.",
-    appliedDate: "2026-06-19"
+    appliedDate: "2026-06-19",
+    isPriority: true,
+    salaryExpectation: 2200000,
+    salaryOffer: 2400000
   },
   {
     id: "cand-002",
@@ -147,12 +195,16 @@ let CANDIDATES_DB: Candidate[] = [
     ],
     resumeText: "Data Scientist with solid 3 years of career history building classification and clustering models. In-depth understanding of statistical analyses, hyper-parameter search, pandas, and SQL. Skilled in making microservices wrapper utilizing FastAPI and PostgreSQL database connectors.",
     behavioralSignals: { ownership: 4, leadership: 3, collaboration: 4 },
+    platformActivity: { codingScore: 89, profileCompleteness: 90, responsivenessScore: 88, hackathonRank: 12 },
     jobId: "job-002",
     stage: "Interview",
     interviewStage: "Screening",
     recruiterNotes: "Strong analytical background. Good candidate for the Predictive Talent Discovery role.",
     recruiterFeedback: "Needs slight review on deep learning topics, but outstanding on core machine learning and clean Pandas logic.",
-    appliedDate: "2026-06-18"
+    appliedDate: "2026-06-18",
+    isPriority: false,
+    salaryExpectation: 1800000,
+    salaryOffer: 1650000
   },
   {
     id: "cand-003",
@@ -170,12 +222,15 @@ let CANDIDATES_DB: Candidate[] = [
     ],
     resumeText: "Energetic backend engineer with 2 years of work focus. Proficient with python Django and Flask setups. Created several modularREST APIs with high thoroughput. Excellent relational database design using PostgreSQL. Eager to transition towards ML/AI engineering.",
     behavioralSignals: { ownership: 5, leadership: 2, collaboration: 4 },
+    platformActivity: { codingScore: 92, profileCompleteness: 85, responsivenessScore: 90, hackathonRank: 24 },
     jobId: "job-001",
     stage: "Applied",
     interviewStage: "None",
     recruiterNotes: "Excellent general software engineer but lacks advanced NLP embeddings and LLM training experience. Might cover gaps quickly due to NIT CS foundation.",
     recruiterFeedback: "Very humble, clear code structure, strong with Python architecture and Postgres performance tuning.",
-    appliedDate: "2026-06-21"
+    appliedDate: "2026-06-21",
+    isPriority: false,
+    salaryExpectation: 1200000
   },
   {
     id: "cand-004",
@@ -193,12 +248,15 @@ let CANDIDATES_DB: Candidate[] = [
     ],
     resumeText: "Passionate AI practitioner with 1.5 years experience. Strongly focused on deep neural networks utilizing PyTorch and TensorFlow datasets. Conducted NLP tasks like sentiment classification, tokenizer implementations, and model evaluation under pressure.",
     behavioralSignals: { ownership: 4, leadership: 3, collaboration: 3 },
+    platformActivity: { codingScore: 85, profileCompleteness: 95, responsivenessScore: 80, hackathonRank: 41 },
     jobId: "job-001",
     stage: "Applied",
     interviewStage: "None",
     recruiterNotes: "Talented junior researcher, but slightly underqualified in years of experience (1.5 yrs vs 3 yrs required) and lacks vector index skills.",
     recruiterFeedback: "Excellent coding baseline. Suggested she check our open junior ML developer program.",
-    appliedDate: "2026-06-20"
+    appliedDate: "2026-06-20",
+    isPriority: false,
+    salaryExpectation: 950000
   },
   {
     id: "cand-005",
@@ -217,12 +275,16 @@ let CANDIDATES_DB: Candidate[] = [
     ],
     resumeText: "Experienced infrastructure and systems lead with 6 years experience. M.Tech graduate of IIIT Hyderabad. Champion of scalable AI pipeline deployment, Docker orchestration, AWS systems security, CI/CD automated testbeds, and postgres cluster management.",
     behavioralSignals: { ownership: 5, leadership: 5, collaboration: 4 },
+    platformActivity: { codingScore: 94, profileCompleteness: 100, responsivenessScore: 92, hackathonRank: 8 },
     jobId: "job-001",
-    stage: "Shortlisted",
-    interviewStage: "Screening",
+    stage: "Offer",
+    interviewStage: "None",
     recruiterNotes: "Extremely strong on system orchestration, deployment and container scaling. Lacks direct LLMs training experience, but a vital asset for production scaling.",
     recruiterFeedback: "A natural leader who takes absolute ownership. Highly competent architect for MLOps and microservice optimization.",
-    appliedDate: "2026-06-17"
+    appliedDate: "2026-06-17",
+    isPriority: true,
+    salaryExpectation: 2800000,
+    salaryOffer: 2900000
   }
 ];
 
@@ -263,7 +325,44 @@ app.post("/api/jobs", (req, res) => {
 
 // GET all candidates
 app.get("/api/candidates", (req, res) => {
+  CANDIDATES_DB.forEach(c => {
+    if (!c.quickNotes || c.quickNotes.length === 0) {
+      c.quickNotes = [
+        {
+          id: "default-1",
+          text: "Initial resume parsing looks successful. Good match on core keywords.",
+          timestamp: "09:30 AM " + c.appliedDate,
+          author: "System Parser"
+        }
+      ];
+    }
+  });
   res.json(CANDIDATES_DB);
+});
+
+// POST add quick note
+app.post("/api/candidates/:id/quick-notes", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, author } = req.body;
+    const cand = CANDIDATES_DB.find((c) => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    if (!cand.quickNotes) {
+      cand.quickNotes = [];
+    }
+    const newNote = {
+      id: "note-" + Date.now(),
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+      author: author || "Recruiter"
+    };
+    cand.quickNotes.push(newNote);
+    res.json(cand);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // POST update candidate stage
@@ -307,6 +406,309 @@ app.post("/api/candidates/:id/notes", (req, res) => {
   }
 });
 
+// POST toggle priority flag for candidate
+app.post("/api/candidates/:id/priority", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPriority } = req.body;
+    const cand = CANDIDATES_DB.find((c) => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    cand.isPriority = !!isPriority;
+    res.json(cand);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST update candidate salary expectations/offers
+app.post("/api/candidates/:id/salary", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { salaryExpectation, salaryOffer } = req.body;
+    const cand = CANDIDATES_DB.find((c) => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    if (salaryExpectation !== undefined) cand.salaryExpectation = Number(salaryExpectation) || 0;
+    if (salaryOffer !== undefined) cand.salaryOffer = salaryOffer !== null ? (Number(salaryOffer) || 0) : undefined;
+    res.json(cand);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST submit/update structured interview feedback
+app.post("/api/candidates/:id/interview-feedback", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { feedback } = req.body;
+    const cand = CANDIDATES_DB.find((c) => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    cand.structuredFeedback = feedback;
+    res.json(cand);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST perform bulk updates on multiple candidates
+app.post("/api/candidates/bulk-update", (req, res) => {
+  try {
+    const { candidateIds, stage, action } = req.body;
+    if (!Array.isArray(candidateIds)) {
+      return res.status(400).json({ error: "candidateIds must be an array" });
+    }
+    candidateIds.forEach(id => {
+      const cand = CANDIDATES_DB.find(c => c.id === id);
+      if (cand) {
+        if (action === "reject") {
+          cand.stage = "Rejected";
+          if (!cand.quickNotes) cand.quickNotes = [];
+          cand.quickNotes.push({
+            id: "note-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+            text: "Candidate rejected via automated mass batch pipeline.",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+            author: "Automated Bulk Process"
+          });
+        } else if (action === "stage" && stage) {
+          cand.stage = stage;
+        }
+      }
+    });
+    res.json({ success: true, candidates: CANDIDATES_DB });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST update Candidate's skill progress (fills skill gaps)
+app.post("/api/candidates/:id/skills/progress", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { skillName, level } = req.body;
+    const cand = CANDIDATES_DB.find((c) => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    if (!cand.skillProgress) {
+      cand.skillProgress = {};
+    }
+    cand.skillProgress[skillName] = level;
+
+    // If level is Intermediate or Expert, make sure it exists in candidate's skills list
+    if ((level === "Intermediate" || level === "Expert") && !cand.skills.includes(skillName)) {
+      cand.skills.push(skillName);
+    } else if (level === "Missing") {
+      cand.skills = cand.skills.filter(s => s !== skillName);
+    }
+
+    res.json(cand);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET recruiter availability slots
+app.get("/api/recruiter/availability", (req, res) => {
+  res.json(RECRUITER_AVAILABILITY);
+});
+
+// POST add new recruiter slot
+app.post("/api/recruiter/availability", (req, res) => {
+  try {
+    const { date, time } = req.body;
+    if (!date || !time) {
+      return res.status(400).json({ error: "Missing date or time" });
+    }
+    const newSlot = {
+      id: "slot-" + Date.now(),
+      date,
+      time,
+      booked: false,
+      bookedBy: null as string | null
+    };
+    RECRUITER_AVAILABILITY.push(newSlot);
+    res.json(RECRUITER_AVAILABILITY);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST book candidate interview
+app.post("/api/candidates/:id/book-interview", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slotId } = req.body;
+    const cand = CANDIDATES_DB.find(c => c.id === id);
+    if (!cand) return res.status(404).json({ error: "Candidate not found" });
+
+    const slot = RECRUITER_AVAILABILITY.find(s => s.id === slotId);
+    if (!slot) return res.status(404).json({ error: "Slot not found" });
+    if (slot.booked) return res.status(400).json({ error: "Slot is already booked" });
+
+    // Clear previous booking for this candidate if exists
+    if (cand.scheduledInterview) {
+      const prevSlot = RECRUITER_AVAILABILITY.find(s => s.id === cand.scheduledInterview?.slotId);
+      if (prevSlot) {
+        prevSlot.booked = false;
+        prevSlot.bookedBy = null;
+      }
+    }
+
+    slot.booked = true;
+    slot.bookedBy = cand.id;
+    cand.scheduledInterview = {
+      slotId: slot.id,
+      date: slot.date,
+      time: slot.time,
+      recruiterName: "Sneha Reddy (Lead Technical Recruiter)",
+      status: "Confirmed",
+      meetingLink: "https://meet.google.com/abc-defg-hij"
+    };
+
+    res.json({ candidate: cand, availability: RECRUITER_AVAILABILITY });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST draft personalized outreach email
+app.post("/api/candidates/:id/draft-outreach", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cand = CANDIDATES_DB.find(c => c.id === id);
+    if (!cand) return res.status(404).json({ error: "Candidate not found" });
+
+    const job = JOBS_DB.find(j => j.id === cand.jobId) || JOBS_DB[0];
+
+    if (ai) {
+      console.log(`AI drafting outreach email for ${cand.name}...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Draft a highly professional, warm, personalized outreach recruitment email for candidate "${cand.name}" who is shortlisted for the role "${job.title}" at "${job.company}". Leverage key highlights from their CV/resume text below: \n\nResume/Bio:\n${cand.resumeText || ""}\nSkills:\n${cand.skills.join(", ")}\n\nJob details:\n${job.description}\n\nMaintain a friendly, authentic, and compelling tone. Include placeholders for the recruiter to inspect/customize.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              subject: { type: Type.STRING },
+              body: { type: Type.STRING }
+            },
+            required: ["subject", "body"]
+          }
+        }
+      });
+      const text = response.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      }
+    }
+
+    // Fallback outreach draft
+    res.json({
+      subject: `Exciting Career Opportunity: ${job.title} at ${job.company}`,
+      body: `Hi ${cand.name},\n\nI hope this email finds you well!\n\nMy name is Sneha and I'm a Lead Recruiter at ${job.company}. I came across your impressive background in ${cand.skills.slice(0, 3).join(", ")}, and your profile caught my attention for our open ${job.title} position.\n\nYour experience with projects like "${cand.projects?.[0] || "scalable system design"}" and your solid ${cand.experienceYears} years of technical experience aligns beautifully with what we're building here.\n\nI would love to set up a brief 15-minute introductory call to tell you more about the role and learn about your career goals. Let me know if you have availability this week, or feel free to book a slot directly through our scheduler!\n\nBest regards,\n\nSneha Reddy\nLead Recruiter, ${job.company}`
+    });
+  } catch (error: any) {
+    console.error("Draft outreach error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST search/source passive talent
+app.post("/api/talent-source/search", async (req, res) => {
+  try {
+    const { jobId, customQuery } = req.body;
+    const job = JOBS_DB.find(j => j.id === jobId) || JOBS_DB[0];
+
+    if (ai) {
+      console.log(`AI sourcing passive talent for Job: ${job.title}...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Generate exactly 3 realistic, highly detailed, and compelling passive candidate profiles sourced from public directories that would perfectly match the active job requirement "${job.title}". Utilize the job's must-have skills [${job.mustHaveSkills.join(", ")}] and nice-to-have skills [${job.niceToHaveSkills.join(", ")}]. Ensure the profiles look realistic with Indian names, current top tech companies, experience history, portfolios, and a solid semantic alignment justification.\n\nCustom prompt guidance: ${customQuery || "None"}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                currentRole: { type: Type.STRING },
+                currentCompany: { type: Type.STRING },
+                experienceYears: { type: Type.INTEGER },
+                skills: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                education: { type: Type.STRING },
+                socialHandle: { type: Type.STRING },
+                email: { type: Type.STRING },
+                matchJustification: { type: Type.STRING },
+                estimatedSalaryFit: { type: Type.STRING }
+              },
+              required: ["name", "currentRole", "currentCompany", "experienceYears", "skills", "education", "socialHandle", "email", "matchJustification", "estimatedSalaryFit"]
+            }
+          }
+        }
+      });
+      const text = response.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      }
+    }
+
+    // Fallback high-potential passive profiles
+    res.json([
+      {
+        name: "Priyanka Nair",
+        currentRole: "Senior Backend Dev",
+        currentCompany: "Razorpay",
+        experienceYears: 5,
+        skills: [...job.mustHaveSkills, "Go", "Kubernetes", "Redis"].slice(0, 5),
+        education: "B.Tech in CSE, NIT Trichy",
+        socialHandle: "github.com/priyanka-nair",
+        email: "p.nair@razorpay.demo",
+        matchJustification: "Exceptional system design skills. Led microservice migration handling 15k RPS. Direct alignment with must-have stack.",
+        estimatedSalaryFit: "Strong Match (Within Budget)"
+      },
+      {
+        name: "Rohan Das",
+        currentRole: "Lead Frontend Architect",
+        currentCompany: "Flipkart",
+        experienceYears: 6,
+        skills: [...job.mustHaveSkills, "React Native", "Tailwind CSS", "Webpack"].slice(0, 5),
+        education: "M.Tech, BITS Pilani",
+        socialHandle: "github.com/rohandas-dev",
+        email: "rohan.das@flipkart.demo",
+        matchJustification: "Maintained critical core UI components libraries. Expert in client-side bundling, code splitting, and web vitals optimization.",
+        estimatedSalaryFit: "Medium Match (+5% over budget)"
+      },
+      {
+        name: "Saurabh Mishra",
+        currentRole: "AI Research Engineer",
+        currentCompany: "Hugging Face (Remote)",
+        experienceYears: 4,
+        skills: [...job.mustHaveSkills, "PyTorch", "Transformers", "LangChain"].slice(0, 5),
+        education: "B.Tech, IIT Roorkee",
+        socialHandle: "github.com/saurabh-m",
+        email: "s.mishra@hf.demo",
+        matchJustification: "Active contributor to open-source agentic frameworks. Deep understanding of quantization, fine-tuning, and RAG architectures.",
+        estimatedSalaryFit: "Strong Match (Within Budget)"
+      }
+    ]);
+  } catch (error: any) {
+    console.error("Talent Sourcing error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST create/update custom candidate profile
 app.post("/api/candidates", (req, res) => {
   try {
@@ -329,6 +731,7 @@ app.post("/api/candidates", (req, res) => {
       experience: Array.isArray(experience) ? experience : [],
       resumeText: resumeText || "",
       behavioralSignals: existingIndex !== -1 ? CANDIDATES_DB[existingIndex].behavioralSignals : { ownership: 4, leadership: 4, collaboration: 4 },
+      platformActivity: existingIndex !== -1 ? CANDIDATES_DB[existingIndex].platformActivity : { codingScore: 82, profileCompleteness: 75, responsivenessScore: 80, hackathonRank: 45 },
       jobId: jobId || "job-001",
       stage: existingIndex !== -1 ? CANDIDATES_DB[existingIndex].stage : "Applied",
       interviewStage: existingIndex !== -1 ? CANDIDATES_DB[existingIndex].interviewStage : "None",
@@ -349,10 +752,67 @@ app.post("/api/candidates", (req, res) => {
   }
 });
 
-// POST parse upload resume using Gemini AI
+// ---------------------------------------------------------
+// PYTHON FASTAPI COGNITIVE BRIDGE
+// ---------------------------------------------------------
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
+
+async function isPythonBackendAlive(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(PYTHON_BACKEND_URL + "/", { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+// POST parse upload resume using Gemini AI or Local Python PyMuPDF
 app.post("/api/candidates/parse-resume", async (req, res) => {
   try {
     const { fileBase64, fileName, fileType, rawPastedText } = req.body;
+
+    // Check if the FastAPI python backend is active
+    const pythonActive = await isPythonBackendAlive();
+    if (pythonActive) {
+      try {
+        console.log("System Status: Directing resume parse towards FastAPI service...");
+        if (fileBase64 && !rawPastedText) {
+          // Decode Base64 and build Blob for PyMuPDF parsing
+          const buffer = Buffer.from(fileBase64, "base64");
+          const fileBlob = new Blob([buffer], { type: "application/pdf" });
+          const formData = new FormData();
+          formData.append("file", fileBlob, fileName || "resume.pdf");
+
+          const pyRes = await fetch(`${PYTHON_BACKEND_URL}/api/parser/parse-pdf`, {
+            method: "POST",
+            body: formData
+          });
+
+          if (pyRes.ok) {
+            const parsedData = await pyRes.json();
+            return res.json(parsedData);
+          } else {
+            console.warn("Python PDF custom parser returned a non-200 state, continuing to fallback...");
+          }
+        } else if (rawPastedText) {
+          const pyRes = await fetch(`${PYTHON_BACKEND_URL}/api/parser/parse-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: rawPastedText })
+          });
+
+          if (pyRes.ok) {
+            const parsedData = await pyRes.json();
+            return res.json(parsedData);
+          }
+        }
+      } catch (err) {
+        console.warn("FastAPI parser error, applying primary Node logic:", err);
+      }
+    }
 
     let textToParse = rawPastedText || "";
 
@@ -486,6 +946,67 @@ app.post("/api/candidates/rank", async (req, res) => {
       return res.status(404).json({ error: "Job opening not found." });
     }
 
+    // Check if FastAPI python backend can satisfy vector ranking query using sentence-transformers & FAISS
+    const pythonActive = await isPythonBackendAlive();
+    if (pythonActive) {
+      try {
+        console.log(`System Status: Querying python FAISS embedding matching pool for ${job.title}...`);
+        
+        // Prepare Request Payload matched exactly to FastAPI expected schema
+        const payload = {
+          jobId: job.id,
+          jobTitle: job.title,
+          jobDescription: job.description,
+          mustHaveSkills: job.mustHaveSkills,
+          candidates: CANDIDATES_DB.map(cand => ({
+            id: cand.id,
+            name: cand.name,
+            skills: cand.skills,
+            experienceYears: cand.experienceYears,
+            resumeText: cand.resumeText || ""
+          }))
+        };
+
+        const pyRankRes = await fetch(`${PYTHON_BACKEND_URL}/api/vector-search/rank`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (pyRankRes.ok) {
+          const rankData = await pyRankRes.json();
+          const pythonRanks = rankData.candidates;
+
+          // Merge parsed candidate metrics index-by-index
+          const rankedCandidates = pythonRanks.map((pyCand: any) => {
+            const originalCand = CANDIDATES_DB.find(c => c.id === pyCand.id) || CANDIDATES_DB[0];
+            return {
+              ...originalCand,
+              rankingMetrics: {
+                semanticScore: Math.round(pyCand.semanticSimilarityScore),
+                skillMatchScore: Math.round(pyCand.skillsMatchScore),
+                expMatchScore: Math.round(pyCand.expMatchScore),
+                finalScore: Math.round(pyCand.finalWeightedScore),
+                matchedMustSkills: pyCand.matchedSkills,
+                missingMustSkills: pyCand.missingSkills,
+                aiExplanation: `${pyCand.aiBrief} (Retrieved contextually via python vector similarity calculated in Sentence-Transformers)`,
+                gapAnalysis: `Technical gaps identified: ${pyCand.missingSkills.join(", ") || "None Outstanding"}`
+              }
+            };
+          });
+
+          return res.json({
+            jobId: job.id,
+            jobTitle: job.title,
+            engine: "Sentence-Transformers & FAISS Vector Analyzer",
+            candidates: rankedCandidates
+          });
+        }
+      } catch (err) {
+        console.warn("Failed retrieving ranks from Python backend, executing node scoring engine fallback...", err);
+      }
+    }
+
     // Calculate ranking metrics for each candidate
     const rankedCandidates = await Promise.all(CANDIDATES_DB.map(async (cand) => {
       // Metric A: Skill Overlap math
@@ -599,6 +1120,137 @@ Strict rule: Output ONLY the raw JSON format with no Markdown.`;
       candidates: rankedCandidates
     });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST parse raw job description to auto-generate details & skill tags
+app.post("/api/jobs/parse", async (req, res) => {
+  try {
+    const { description } = req.body;
+    if (!description || typeof description !== "string") {
+      return res.status(400).json({ error: "Job description is required" });
+    }
+
+    if (ai) {
+      console.log("System Status: AI parsing raw job description...");
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Analyze the following raw job description and extract a structured job profile. Ensure the skills are standardized, correct technical acronyms, and format the output according to the requested schema.\n\nRaw Job Description:\n${description}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              domain: { type: Type.STRING },
+              experienceRequired: { type: Type.INTEGER },
+              summary: { type: Type.STRING },
+              mustHaveSkills: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              niceToHaveSkills: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ["title", "domain", "experienceRequired", "summary", "mustHaveSkills", "niceToHaveSkills"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      }
+    }
+
+    // Fallback if AI not initialized or fails
+    console.log("AI parse fallback triggered");
+    const lowercase = description.toLowerCase();
+    let title = "Senior Software Engineer";
+    if (lowercase.includes("react") || lowercase.includes("frontend") || lowercase.includes("ui")) title = "Senior Frontend Developer";
+    else if (lowercase.includes("python") || lowercase.includes("ml") || lowercase.includes("learning") || lowercase.includes("llm")) title = "AI / ML Core Engineer";
+    else if (lowercase.includes("data") || lowercase.includes("analysis") || lowercase.includes("analyst")) title = "Data Scientist / Analyst";
+    
+    res.json({
+      title,
+      domain: title.includes("AI") ? "NLP & AI Core" : "Fullstack Web",
+      experienceRequired: 3,
+      summary: description.slice(0, 150) + " (Synthesized summary from description)...",
+      mustHaveSkills: ["React", "TypeScript", "Node.js"],
+      niceToHaveSkills: ["Docker", "AWS", "Git"]
+    });
+  } catch (error: any) {
+    console.error("Error in /api/jobs/parse:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST match rationale explanation for a candidate on a job
+app.post("/api/candidates/match-rationale", async (req, res) => {
+  try {
+    const { candidateId, jobId } = req.body;
+    const candidate = CANDIDATES_DB.find(c => c.id === candidateId);
+    const job = JOBS_DB.find(j => j.id === jobId);
+
+    if (!candidate || !job) {
+      return res.status(404).json({ error: "Candidate or Job not found" });
+    }
+
+    if (ai) {
+      console.log(`System Status: AI generating match rationale for ${candidate.name} and ${job.title}...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Analyze why the candidate "${candidate.name}" is a fit for the job "${job.title}" at "${job.company}". Highlight key semantic overlaps, experience alignment, potential soft skills, and any potential skill gaps.\n\nJob Title: ${job.title}\nJob Description: ${job.description}\nJob Must-Have Skills: ${job.mustHaveSkills.join(", ")}\nJob Nice-to-Have Skills: ${job.niceToHaveSkills.join(", ")}\n\nCandidate Resume / Experience:\n${candidate.resumeText || ""}\nCandidate Skills: ${candidate.skills.join(", ")}\nCandidate Experience Years: ${candidate.experienceYears}\nCandidate Behavioral Scores: Ownership=${candidate.behavioralSignals?.ownership || 4}, Leadership=${candidate.behavioralSignals?.leadership || 4}, Collaboration=${candidate.behavioralSignals?.collaboration || 4}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              overallFit: { type: Type.STRING },
+              semanticMatches: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              skillGaps: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              culturalAssessment: { type: Type.STRING },
+              overallScore: { type: Type.INTEGER }
+            },
+            required: ["overallFit", "semanticMatches", "skillGaps", "culturalAssessment", "overallScore"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      }
+    }
+
+    // Fallback if AI not initialized or fails
+    const matchedSkills = candidate.skills.filter(s => job.mustHaveSkills.some(jS => jS.toLowerCase() === s.toLowerCase()));
+    const missingSkills = job.mustHaveSkills.filter(jS => !candidate.skills.some(s => s.toLowerCase() === jS.toLowerCase()));
+
+    res.json({
+      overallFit: `${candidate.name} demonstrates a solid foundation suitable for the ${job.title} position, possessing ${candidate.experienceYears} years of experience and core capability alignment in several technical fields.`,
+      semanticMatches: [
+        `Direct overlap in technical stack: ${matchedSkills.slice(0, 3).join(", ") || "Generic programming tools"}.`,
+        `${candidate.experienceYears} years of domain-focused engineering tenure matches the minimum requirement.`,
+        `Familiarity with related architectural patterns mentioned in the description.`
+      ],
+      skillGaps: missingSkills.length > 0 ? missingSkills.map(s => `Missing direct indicator for: ${s}`) : ["No major skill gaps identified."],
+      culturalAssessment: `Strong soft skills indicated by high ratings in collaboration (${candidate.behavioralSignals?.collaboration || 4}/5) and ownership (${candidate.behavioralSignals?.ownership || 4}/5), fitting well with the team structure.`,
+      overallScore: 82
+    });
+  } catch (error: any) {
+    console.error("Error in match rationale:", error);
     res.status(500).json({ error: error.message });
   }
 });

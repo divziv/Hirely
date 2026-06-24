@@ -35,12 +35,35 @@ export interface Candidate {
     leadership: number;
     collaboration: number;
   };
+  platformActivity?: {
+    codingScore: number;
+    profileCompleteness: number;
+    responsivenessScore: number;
+    hackathonRank?: number;
+  };
   jobId: string;
   stage: string; // "Applied" | "Shortlisted" | "Interview" | "Offer" | "Rejected"
   interviewStage?: string; // "Screening" | "Technical" | "Behavioral" | "Final" | "None"
   recruiterNotes: string;
   recruiterFeedback: string;
   appliedDate: string;
+  isPriority?: boolean;
+  salaryExpectation?: number;
+  salaryOffer?: number;
+  quickNotes?: Array<{
+    id: string;
+    text: string;
+    timestamp: string;
+    author: string;
+  }>;
+  scheduledInterview?: {
+    slotId: string;
+    date: string;
+    time: string;
+    recruiterName: string;
+    status: 'Scheduled' | 'Confirmed' | 'Completed';
+    meetingLink?: string;
+  };
   rankingMetrics?: {
     semanticScore: number;
     skillMatchScore: number;
@@ -51,6 +74,17 @@ export interface Candidate {
     aiExplanation: string;
     gapAnalysis: string;
   };
+  structuredFeedback?: {
+    technicalProficiency: number;
+    communication: number;
+    culturalAlignment: number;
+    problemSolving: number;
+    overallRecommendation: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire';
+    additionalNotes: string;
+    submittedBy?: string;
+    submittedAt?: string;
+  };
+  skillProgress?: Record<string, 'Expert' | 'Intermediate' | 'Missing'>;
 }
 
 export type AppRole = "recruiter" | "candidate";
