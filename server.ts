@@ -816,28 +816,35 @@ app.post("/api/candidates/parse-resume", async (req, res) => {
 
     let textToParse = rawPastedText || "";
 
-    // If PDF or Doc exists, we pass it to Gemini or fallback
-    if (fileBase64 && ai) {
+    // If PDF or Doc exists, or we have raw pasted text, we pass it to Gemini or fallback
+    if ((fileBase64 || rawPastedText) && ai) {
       try {
-        console.log(`Analyzing file ${fileName || "Resume"} using Gemini Model multimodal parsing...`);
-        // Setup file content parts
-        let mimeType = "application/pdf";
-        if (fileType) {
-          mimeType = fileType;
-        } else if (fileName?.endsWith(".pdf")) mimeType = "application/pdf";
-        else if (fileName?.endsWith(".txt")) mimeType = "text/plain";
+        let contents: any[] = [];
+        if (fileBase64) {
+          console.log(`Analyzing file ${fileName || "Resume"} using Gemini Model multimodal parsing...`);
+          // Setup file content parts
+          let mimeType = "application/pdf";
+          if (fileType) {
+            mimeType = fileType;
+          } else if (fileName?.endsWith(".pdf")) mimeType = "application/pdf";
+          else if (fileName?.endsWith(".txt")) mimeType = "text/plain";
+          
+          contents.push({
+            inlineData: {
+              data: fileBase64,
+              mimeType: mimeType
+            }
+          });
+        } else {
+          console.log("Analyzing pasted raw resume text using Gemini...");
+          contents.push(`Resume text content:\n${rawPastedText}`);
+        }
         
+        contents.push("Parsing instruction: You are a professional CV parser. Read this document carefully and extract: name, email, skills (list of technologies), total estimated experience in years (number), education, and list of professional experiences with title, company, duration, and list of projects. Keep standard field layout. Return strictly valid raw JSON code. Do not wrap in markdown quotes.");
+
         const response = await ai.models.generateContent({
           model: "gemini-3.5-flash",
-          contents: [
-            {
-              inlineData: {
-                data: fileBase64,
-                mimeType: mimeType
-              }
-            },
-            "Parsing instruction: You are a professional CV parser. Read this document carefully and extract: name, email, skills (list of technologies), total estimated experience in years (number), education, and list of professional experiences with title, company, duration, and list of projects. Keep standard field layout. Return strictly valid raw JSON code. Do not wrap in markdown quotes."
-          ],
+          contents,
           config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -1186,6 +1193,42 @@ app.post("/api/jobs/parse", async (req, res) => {
   } catch (error: any) {
     console.error("Error in /api/jobs/parse:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// POST draft a professional job description using Gemini based on title and skills
+app.post("/api/jobs/generate-description", async (req, res) => {
+  try {
+    const { title, skills } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: "Job title is required to generate description" });
+    }
+    
+    if (ai) {
+      console.log(`System Status: AI generating job description for ${title}...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Draft a highly professional, engaging, and detailed job description for a role titled "${title}" requiring the following skills: ${skills || "AI, Cloud, Python"}. Include an 'About the Role' section, 'Core Responsibilities', and why a candidate should apply. Highlight the specified skills naturally. Format with clean structure.`,
+      });
+      return res.json({ description: response.text });
+    }
+    
+    // Fallback description
+    const fallbackDesc = `About the Role:
+We are seeking a talented and driven ${title} to join our core technical team. In this role, you will lead development, optimize pipelines, and innovate.
+
+Core Requirements:
+- Hands-on experience with: ${skills || "relevant technologies"}
+- Minimum 3+ years in a software development environment
+- Proven capability to collaborate, design, and deliver robust software.
+
+Key Responsibilities:
+- Design and implement critical features and core backend components
+- Champion clean code, unit tests, and software engineering best practices
+- Mentor junior engineers and collaborate across product lines.`;
+    return res.json({ description: fallbackDesc });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

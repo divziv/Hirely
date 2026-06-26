@@ -72,6 +72,56 @@ export default function RecruiterDashboard({
     }
   };
 
+  const handleOpenBulkActionModal = (actionType: 'stage' | 'reject', stage?: string) => {
+    setBulkActionModal({
+      isOpen: true,
+      actionType,
+      targetStage: stage
+    });
+    
+    // Automatically select a matching template
+    if (actionType === "reject") {
+      setSelectedEmailTemplate("reject");
+      setCustomEmailSubject("Application Update: Redrob Team");
+      setCustomEmailBody("Dear Candidate,\n\nThank you for your time and application. Although your background is impressive, we have decided to move forward with other candidates whose skillsets align more closely with our current technical requirements.\n\nWe wish you the absolute best in your career pursuits.\n\nBest regards,\nRecruitment Team");
+    } else if (stage === "Interview") {
+      setSelectedEmailTemplate("invite");
+      setCustomEmailSubject("Technical Interview Invitation - Redrob");
+      setCustomEmailBody("Dear Candidate,\n\nWe were highly impressed by your experience and core technical skillset. We would love to schedule a technical interview to discuss your experience.\n\nPlease let us know your availability over the coming days.\n\nBest regards,\nRecruitment Team");
+    } else {
+      setSelectedEmailTemplate("progression");
+      setCustomEmailSubject(`Application Update: Progressing to ${stage || "next stage"}`);
+      setCustomEmailBody(`Dear Candidate,\n\nWe are pleased to inform you that your application has been progressed to the "${stage || "next stage"}" level of our review process.\n\nWe will reach out shortly with details and next steps.\n\nBest regards,\nRecruitment Team`);
+    }
+  };
+
+  const handleConfirmBulkAction = async () => {
+    try {
+      const { actionType, targetStage } = bulkActionModal;
+      
+      // Perform bulk database update
+      const res = await fetch("/api/candidates/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateIds: bulkSelectedCandidateIds,
+          action: actionType === "reject" ? "reject" : "stage",
+          stage: targetStage
+        })
+      });
+
+      if (res.ok) {
+        // Reset state
+        setBulkSelectedCandidateIds([]);
+        setBulkActionModal({ isOpen: false });
+        setSelectedEmailTemplate("none");
+        onRefreshData();
+      }
+    } catch (err) {
+      console.error("Bulk action failed:", err);
+    }
+  };
+
   const handleUpdateSalary = async (candId: string, expectation: number, offer?: number) => {
     try {
       const res = await fetch(`/api/candidates/${candId}/salary`, {
@@ -172,6 +222,32 @@ export default function RecruiterDashboard({
     };
   });
   const [isParsingJobDescription, setIsParsingJobDescription] = useState(false);
+  const [isGeneratingJD, setIsGeneratingJD] = useState(false);
+  
+  // Bulk Candidate Actions & Automated Email Notification Trigger
+  const [bulkSelectedCandidateIds, setBulkSelectedCandidateIds] = useState<string[]>([]);
+  const [bulkActionModal, setBulkActionModal] = useState<{
+    isOpen: boolean;
+    targetStage?: string;
+    actionType?: 'stage' | 'reject' | 'email';
+  }>({ isOpen: false });
+  const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<string>("none");
+  const [customEmailSubject, setCustomEmailSubject] = useState<string>("");
+  const [customEmailBody, setCustomEmailBody] = useState<string>("");
+
+  // Structured Interview Feedback Form states
+  const [isEvaluatingCandidate, setIsEvaluatingCandidate] = useState<boolean>(false);
+  const [tempScorecard, setTempScorecard] = useState<{
+    technicalProficiency: number;
+    communication: number;
+    culturalAlignment: number;
+    notes: string;
+  }>({
+    technicalProficiency: 3,
+    communication: 3,
+    culturalAlignment: 3,
+    notes: ""
+  });
 
   // Auto-save Job Posting form to localStorage
   useEffect(() => {
@@ -1224,6 +1300,50 @@ export default function RecruiterDashboard({
               </div>
             </div>
 
+            {/* Bulk Actions Banner */}
+            {bulkSelectedCandidateIds.length > 0 && (
+              <div className="bg-slate-950 border border-emerald-500/20 rounded-lg p-2.5 mb-3 flex items-center justify-between gap-2 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold text-[11px] font-mono">
+                    {bulkSelectedCandidateIds.length}
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-200">Selected for Bulk action</span>
+                  <button
+                    type="button"
+                    onClick={() => setBulkSelectedCandidateIds([])}
+                    className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] text-slate-500 font-mono hidden sm:inline">Action:</span>
+                  
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      if (val === "reject") {
+                        handleOpenBulkActionModal("reject");
+                      } else {
+                        handleOpenBulkActionModal("stage", val);
+                      }
+                      e.target.value = ""; // Reset dropdown
+                    }}
+                    className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 rounded px-2 py-1 focus:outline-none focus:border-slate-700 cursor-pointer animate-pulse"
+                  >
+                    <option value="">Choose action...</option>
+                    <option value="Shortlisted">Move: Shortlisted</option>
+                    <option value="Interview">Move: Interview</option>
+                    <option value="Offer">Move: Offer</option>
+                    <option value="Hired">Move: Hired</option>
+                    <option value="reject">Bulk Reject Candidates</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
           {isLoadingRank ? (
             <div className="space-y-3 py-6 text-center">
               <div className="animate-spin w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full mx-auto"></div>
@@ -1265,12 +1385,31 @@ export default function RecruiterDashboard({
                     }`}
                   >
                     
+                    {/* Bulk Selection Checkbox */}
+                    <div 
+                      className="absolute top-4.5 left-3.5 z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={bulkSelectedCandidateIds.includes(cand.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setBulkSelectedCandidateIds([...bulkSelectedCandidateIds, cand.id]);
+                          } else {
+                            setBulkSelectedCandidateIds(bulkSelectedCandidateIds.filter(id => id !== cand.id));
+                          }
+                        }}
+                        className="w-4 h-4 rounded bg-slate-900 border-slate-800 text-emerald-500 focus:ring-0 cursor-pointer accent-emerald-500"
+                      />
+                    </div>
+
                     {/* Rank badge */}
-                    <div className="absolute top-3.5 left-4.5 bg-slate-900 text-[10px] font-mono text-slate-300 px-1.5 py-0.5 rounded border border-slate-800">
+                    <div className="absolute top-3.5 left-10 bg-slate-900 text-[10px] font-mono text-slate-300 px-1.5 py-0.5 rounded border border-slate-800">
                       #{index + 1}
                     </div>
 
-                    <div className="pl-8">
+                    <div className="pl-14">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center flex-wrap gap-2">
@@ -1769,6 +1908,84 @@ export default function RecruiterDashboard({
                 </div>
               </div>
 
+              {/* COGNITIVE SKILL ALIGNMENT MAP */}
+              <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-950 space-y-3">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center justify-between">
+                  <span>Required Skills Alignment Plot</span>
+                  <span className="text-[8px] text-slate-500 font-sans italic">Job vs Candidate Resume Match</span>
+                </h4>
+                
+                <div className="space-y-2">
+                  {(() => {
+                    const mustHaves = selectedJob?.mustHaveSkills || [];
+                    const niceHaves = selectedJob?.niceToHaveSkills || [];
+                    const allRequired = [
+                      ...mustHaves.map(s => ({ name: s, isMustHave: true })),
+                      ...niceHaves.map(s => ({ name: s, isMustHave: false }))
+                    ];
+
+                    if (allRequired.length === 0) {
+                      return <p className="text-[10px] text-slate-500 italic text-center py-2">No skills defined for this job posting yet.</p>;
+                    }
+
+                    return allRequired.map(reqSkill => {
+                      // Resolve candidate skill level
+                      const progressLevel = activeCandidateForView.skillProgress?.[reqSkill.name];
+                      const hasSkillInList = activeCandidateForView.skills?.some(
+                        s => s.toLowerCase() === reqSkill.name.toLowerCase()
+                      );
+
+                      let level: "Expert" | "Intermediate" | "Missing" = "Missing";
+                      if (progressLevel) {
+                        level = progressLevel as "Expert" | "Intermediate" | "Missing";
+                      } else if (hasSkillInList) {
+                        level = "Intermediate";
+                      }
+
+                      return (
+                        <div key={reqSkill.name} className="space-y-1">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-semibold text-slate-200 truncate">{reqSkill.name}</span>
+                              <span className={`text-[8px] px-1 rounded-sm uppercase font-mono ${
+                                reqSkill.isMustHave 
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/15" 
+                                  : "bg-slate-900 text-slate-400"
+                              }`}>
+                                {reqSkill.isMustHave ? "Must" : "Nice"}
+                              </span>
+                            </div>
+                            
+                            <span className={`font-mono font-bold text-[9px] ${
+                              level === "Expert" 
+                                ? "text-emerald-400" 
+                                : level === "Intermediate" 
+                                  ? "text-amber-400" 
+                                  : "text-rose-500"
+                            }`}>
+                              {level}
+                            </span>
+                          </div>
+
+                          {/* Horizontal bar plot */}
+                          <div className="w-full bg-slate-950/80 rounded h-1.5 overflow-hidden flex animate-fadeIn">
+                            {level === "Expert" && (
+                              <div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full w-full shadow-[0_0_6px_rgba(16,185,129,0.3)]" />
+                            )}
+                            {level === "Intermediate" && (
+                              <div className="bg-gradient-to-r from-amber-500 to-orange-400 h-full w-[65%]" />
+                            )}
+                            {level === "Missing" && (
+                              <div className="border-t border-dashed border-rose-500/40 w-full h-full" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
               {/* PLATFORM ACTIVITY & TEST SCORES */}
               <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-900 space-y-2">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1">
@@ -1985,6 +2202,144 @@ export default function RecruiterDashboard({
                     </div>
                   </div>
                 )}
+
+                {/* Standardized Structured Interview Scorecard */}
+                <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-950 mt-3 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-905 pb-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase font-mono tracking-wider">
+                      Standardized Evaluation Scorecard
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const score = activeCandidateForView.structuredFeedback || {
+                          technicalProficiency: 3,
+                          communication: 3,
+                          culturalAlignment: 3,
+                          notes: ""
+                        };
+                        setTempScorecard(score);
+                        setIsEvaluatingCandidate(!isEvaluatingCandidate);
+                      }}
+                      className="text-[9px] text-emerald-400 hover:underline cursor-pointer"
+                    >
+                      {isEvaluatingCandidate ? "Cancel" : "Rate Candidate"}
+                    </button>
+                  </div>
+
+                  {isEvaluatingCandidate ? (
+                    <div className="space-y-3 text-xs">
+                      <div className="grid grid-cols-1 gap-2.5">
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-mono text-slate-400">Technical Proficiency</label>
+                            <span className="text-[10px] font-mono font-bold text-emerald-400">{tempScorecard.technicalProficiency}/5</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            value={tempScorecard.technicalProficiency}
+                            onChange={(e) => setTempScorecard({ ...tempScorecard, technicalProficiency: Number(e.target.value) })}
+                            className="w-full accent-emerald-500 bg-slate-900 h-1.5 rounded cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-mono text-slate-400">Communication Skills</label>
+                            <span className="text-[10px] font-mono font-bold text-emerald-400">{tempScorecard.communication}/5</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            value={tempScorecard.communication}
+                            onChange={(e) => setTempScorecard({ ...tempScorecard, communication: Number(e.target.value) })}
+                            className="w-full accent-emerald-500 bg-slate-900 h-1.5 rounded cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-mono text-slate-400">Cultural Alignment</label>
+                            <span className="text-[10px] font-mono font-bold text-emerald-400">{tempScorecard.culturalAlignment}/5</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            value={tempScorecard.culturalAlignment}
+                            onChange={(e) => setTempScorecard({ ...tempScorecard, culturalAlignment: Number(e.target.value) })}
+                            className="w-full accent-emerald-500 bg-slate-900 h-1.5 rounded cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-mono text-slate-400">Evaluation Comments</label>
+                        <textarea
+                          rows={2}
+                          value={tempScorecard.notes}
+                          onChange={(e) => setTempScorecard({ ...tempScorecard, notes: e.target.value })}
+                          placeholder="Provide descriptive rationale to support scorecard ratings..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-slate-700"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/candidates/${activeCandidateForView.id}/interview-feedback`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ feedback: tempScorecard })
+                            });
+                            if (res.ok) {
+                              const updatedCand = await res.json();
+                              setActiveCandidateForView(updatedCand);
+                              setIsEvaluatingCandidate(false);
+                              onRefreshData();
+                            }
+                          } catch (err) {
+                            console.error("Failed to save feedback scorecard:", err);
+                          }
+                        }}
+                        className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-[11px] font-sans transition-all cursor-pointer"
+                      >
+                        Commit Evaluation Scorecard
+                      </button>
+                    </div>
+                  ) : activeCandidateForView.structuredFeedback ? (
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                          <span className="text-[8px] block text-slate-500 uppercase font-mono">TECHNICAL</span>
+                          <span className="text-xs font-mono font-bold text-emerald-400">{activeCandidateForView.structuredFeedback.technicalProficiency} / 5</span>
+                        </div>
+                        <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                          <span className="text-[8px] block text-slate-500 uppercase font-mono">COMMUNICATION</span>
+                          <span className="text-xs font-mono font-bold text-emerald-400">{activeCandidateForView.structuredFeedback.communication} / 5</span>
+                        </div>
+                        <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                          <span className="text-[8px] block text-slate-500 uppercase font-mono">CULTURAL</span>
+                          <span className="text-xs font-mono font-bold text-emerald-400">{activeCandidateForView.structuredFeedback.culturalAlignment} / 5</span>
+                        </div>
+                      </div>
+                      {activeCandidateForView.structuredFeedback.notes && (
+                        <div className="bg-slate-900 p-2 rounded text-[11px] text-slate-300 border border-slate-800">
+                          <span className="text-[9px] font-mono text-slate-500 block mb-0.5">EVALUATION SUMMARY:</span>
+                          {activeCandidateForView.structuredFeedback.notes}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 italic text-center py-2">
+                      No interview evaluation scorecard submitted yet.
+                    </p>
+                  )}
+                </div>
 
                 {/* INLINE QUICK NOTES & TEAM ANNOTATION HISTORY */}
                 <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-950 mt-3 space-y-3">
@@ -2281,7 +2636,47 @@ export default function RecruiterDashboard({
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-400 mb-1">JD Role Description / Target Objectives</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] text-slate-400">JD Role Description / Target Objectives</label>
+                  <button
+                    type="button"
+                    disabled={!newJob.title || isGeneratingJD}
+                    onClick={async () => {
+                      setIsGeneratingJD(true);
+                      try {
+                        const res = await fetch("/api/jobs/generate-description", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            title: newJob.title,
+                            skills: newJob.mustHaveInput
+                          })
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          setNewJob(prev => ({ ...prev, description: data.description }));
+                        }
+                      } catch (err) {
+                        console.error("JD draft generation failed:", err);
+                      } finally {
+                        setIsGeneratingJD(false);
+                      }
+                    }}
+                    className="text-[9px] bg-indigo-500/15 hover:bg-indigo-500 hover:text-white border border-indigo-500/30 text-indigo-400 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 font-mono"
+                  >
+                    {isGeneratingJD ? (
+                      <>
+                        <span className="animate-spin inline-block h-2 w-2 border border-indigo-400 border-t-transparent rounded-full mr-0.5" />
+                        Drafting...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-2.5 h-2.5" />
+                        AI Draft with Gemini
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   rows={4}
                   required
@@ -2483,6 +2878,100 @@ export default function RecruiterDashboard({
             ) : (
               <p className="text-xs text-slate-400 text-center py-6">Could not load match rationale.</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* BULK ACTIONS & PREDEFINED EMAIL NOTIFICATION TRIGGER */}
+      {bulkActionModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4 font-sans text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                <Mail className="w-5 h-5 text-emerald-400" />
+                Bulk action: {bulkActionModal.actionType === "reject" ? "Reject Candidates" : `Move to ${bulkActionModal.targetStage}`}
+              </h3>
+              <button onClick={() => setBulkActionModal({ isOpen: false })} className="text-slate-400 hover:text-white cursor-pointer animate-none">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              You have selected <span className="font-bold text-emerald-400">{bulkSelectedCandidateIds.length} candidate(s)</span> for this bulk update. Would you like to automatically trigger predefined email notifications?
+            </p>
+
+            {/* Template Selector dropdown */}
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-slate-400 font-mono uppercase">Predefined Notification Template</label>
+              <select
+                value={selectedEmailTemplate}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedEmailTemplate(val);
+                  if (val === "none") {
+                    setCustomEmailSubject("");
+                    setCustomEmailBody("");
+                  } else if (val === "reject") {
+                    setCustomEmailSubject("Application Update: Redrob Team");
+                    setCustomEmailBody("Dear Candidate,\n\nThank you for your time and application. Although your background is impressive, we have decided to move forward with other candidates whose skillsets align more closely with our current technical requirements.\n\nWe wish you the absolute best in your career pursuits.\n\nBest regards,\nRecruitment Team");
+                  } else if (val === "invite") {
+                    setCustomEmailSubject("Technical Interview Invitation - Redrob");
+                    setCustomEmailBody("Dear Candidate,\n\nWe were highly impressed by your experience and core technical skillset. We would love to schedule a technical interview to discuss your experience.\n\nPlease let us know your availability over the coming days.\n\nBest regards,\nRecruitment Team");
+                  } else if (val === "progression") {
+                    setCustomEmailSubject(`Application Update: Progressing to ${bulkActionModal.targetStage || "next stage"}`);
+                    setCustomEmailBody(`Dear Candidate,\n\nWe are pleased to inform you that your application has been progressed to the "${bulkActionModal.targetStage || "next stage"}" level of our review process.\n\nWe will reach out shortly with details and next steps.\n\nBest regards,\nRecruitment Team`);
+                  }
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-300 focus:outline-none focus:border-slate-700 cursor-pointer"
+              >
+                <option value="none">No Notification (Silent Update)</option>
+                <option value="invite">Interview Invitation Template</option>
+                <option value="progression">Stage Progression Template</option>
+                <option value="reject">Rejection Update Template</option>
+              </select>
+            </div>
+
+            {/* Template customizer */}
+            {selectedEmailTemplate !== "none" && (
+              <div className="space-y-3.5 pt-2 animate-fadeIn">
+                <div className="space-y-1">
+                  <label className="block text-[10px] text-slate-400 font-mono uppercase">Email Subject Line</label>
+                  <input
+                    type="text"
+                    value={customEmailSubject}
+                    onChange={(e) => setCustomEmailSubject(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] text-slate-400 font-mono uppercase">Email Message Body</label>
+                  <textarea
+                    rows={6}
+                    value={customEmailBody}
+                    onChange={(e) => setCustomEmailBody(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-300 focus:outline-none font-sans"
+                  />
+                  <span className="text-[9px] text-slate-500 font-mono italic block">The system will customize greeting pronouns for each recipient automatically.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setBulkActionModal({ isOpen: false })}
+                className="px-4 py-1.5 bg-slate-950 border border-slate-800 rounded text-slate-400 text-xs cursor-pointer hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkAction}
+                className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-xs cursor-pointer transition-colors"
+              >
+                Execute Action &amp; Notify
+              </button>
+            </div>
           </div>
         </div>
       )}

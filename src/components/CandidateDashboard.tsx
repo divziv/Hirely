@@ -419,37 +419,81 @@ export default function CandidateDashboard({
                 </p>
               </div>
 
-              {/* Artificial Suggestions box bridging gaps */}
-              <div className="p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/10 space-y-2">
-                <span className="text-[10px] text-emerald-400 font-mono font-bold uppercase block">RECOMMENDED SKILL-BRIDGE MODULES:</span>
+              {/* Interactive Skills Learning Progress Bridge */}
+              <div className="p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/10 space-y-3">
+                <span className="text-[10px] text-emerald-400 font-mono font-bold uppercase block">My Skills Learning &amp; Progress Hub</span>
                 
                 {(() => {
                   const appliedJob = jobs.find(j => j.id === currentCandidate.jobId);
                   if (appliedJob) {
-                    const missingSkills = appliedJob.mustHaveSkills.filter(sk => 
-                      !currentCandidate.skills.some(userSk => userSk.toLowerCase() === sk.toLowerCase())
-                    );
+                    const allJobSkills = appliedJob.mustHaveSkills;
                     
-                    if (missingSkills.length > 0) {
-                      return (
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-300">
-                            The target role <span className="font-bold text-slate-200">{appliedJob.title}</span> requires deep components listed below. Consider adding them to your skills list once achieved:
-                          </p>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {missingSkills.map(sk => (
-                              <span key={sk} className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-mono px-1.5 py-0.2 rounded">
-                                + Add {sk}
-                              </span>
-                            ))}
-                          </div>
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-300">
+                          Update your learning progress for the key skills required for <span className="font-bold text-slate-200">{appliedJob.title}</span>. Upgrading a skill to Intermediate/Expert automatically adds it to your profile!
+                        </p>
+                        <div className="space-y-1.5 pt-1">
+                          {allJobSkills.map(sk => {
+                            // Find current progress level
+                            let currentLevel = currentCandidate.skillProgress?.[sk];
+                            if (!currentLevel) {
+                              currentLevel = currentCandidate.skills.some(s => s.toLowerCase() === sk.toLowerCase()) ? "Intermediate" : "Missing";
+                            }
+                            
+                            const badgeColors: Record<string, string> = {
+                              "Missing": "bg-rose-500/10 text-rose-400 border border-rose-500/20",
+                              "Beginner": "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+                              "Intermediate": "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+                              "Expert": "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            };
+
+                            return (
+                              <div key={sk} className="flex items-center justify-between p-2 bg-slate-950/60 border border-slate-900 rounded-lg">
+                                <div className="space-y-0.5">
+                                  <span className="text-xs font-mono font-semibold text-slate-200">{sk}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-[9px] uppercase font-mono px-1.5 py-0.2 rounded ${badgeColors[currentLevel] || "bg-slate-850"}`}>
+                                      {currentLevel}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value={currentLevel}
+                                    onChange={async (e) => {
+                                      const newLvl = e.target.value;
+                                      try {
+                                        const res = await fetch(`/api/candidates/${currentCandidate.id}/skills/progress`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ skillName: sk, level: newLvl })
+                                        });
+                                        if (res.ok) {
+                                          onRefreshData();
+                                        }
+                                      } catch (err) {
+                                        console.error("Error updating skill learning progress:", err);
+                                      }
+                                    }}
+                                    className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 rounded px-1 py-0.5 focus:outline-none focus:border-slate-700 cursor-pointer"
+                                  >
+                                    <option value="Missing">Missing / Not Learned</option>
+                                    <option value="Beginner">Beginner (In Progress)</option>
+                                    <option value="Intermediate">Intermediate (Functional)</option>
+                                    <option value="Expert">Expert (Proficient)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    }
+                      </div>
+                    );
                   }
                   return (
                     <p className="text-xs text-slate-400">
-                      No matching gaps for your targeted job. You possess 100% of the core required stack!
+                      Please select a target job opening to track skill learning progress.
                     </p>
                   );
                 })()}
@@ -482,6 +526,60 @@ export default function CandidateDashboard({
 
             <form onSubmit={handleSaveProfile} className="space-y-3.5 text-xs">
               
+              {/* AI Auto-Fill Helper */}
+              <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1 font-mono">
+                    <Sparkles className="w-3 h-3 animate-pulse text-emerald-400" /> AI Resume Auto-Fill
+                  </span>
+                </div>
+                <p className="text-[9px] text-slate-400">
+                  Paste raw resume text below and click Parse to extract and auto-fill the profile form fields.
+                </p>
+                <textarea
+                  id="pasted-resume-text"
+                  rows={3}
+                  placeholder="Paste raw resume/CV text here..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-slate-300 text-[10px] focus:outline-none focus:border-emerald-500 font-sans"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const textEl = document.getElementById("pasted-resume-text") as HTMLTextAreaElement;
+                    if (!textEl || !textEl.value.trim()) return;
+                    setIsParsing(true);
+                    try {
+                      const res = await fetch("/api/candidates/parse-resume", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ rawPastedText: textEl.value })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setEditForm({
+                          name: data.name || editForm.name,
+                          email: currentUserEmail,
+                          skillsInput: Array.isArray(data.skills) ? data.skills.join(", ") : editForm.skillsInput,
+                          experienceYears: Number(data.experienceYears) || editForm.experienceYears,
+                          educationInput: Array.isArray(data.education) ? data.education.join(", ") : editForm.educationInput,
+                          projectsInput: Array.isArray(data.projects) ? data.projects.join(". ") : editForm.projectsInput,
+                          resumeText: data.resumeText || textEl.value
+                        });
+                        textEl.value = ""; // Clear on success
+                      }
+                    } catch (err) {
+                      console.error("Failed to parse pasted resume:", err);
+                    } finally {
+                      setIsParsing(false);
+                    }
+                  }}
+                  disabled={isParsing}
+                  className="w-full py-1 px-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30 text-emerald-400 rounded text-[10px] font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                >
+                  {isParsing ? "Extracting with Gemini..." : "Parse Resume & Auto-Fill Fields"}
+                </button>
+              </div>
+
               <div>
                 <label className="block text-[10px] text-slate-400 mb-1">Full Legal Name</label>
                 <input
