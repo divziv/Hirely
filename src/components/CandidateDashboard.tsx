@@ -47,8 +47,25 @@ export default function CandidateDashboard({
     resumeText: ""
   });
 
-  // Pre-fill edit form when candidate changes
+  // Pre-fill edit form when candidate changes, checking for autosaved drafts first
   useEffect(() => {
+    const savedDraft = localStorage.getItem("candidateProfileForm");
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.email === currentUserEmail) {
+          setEditForm(parsed);
+          setIsEditing(true); // Restore edit mode if there is a draft!
+          if (jobs.length > 0 && !selectedJobId) {
+            setSelectedJobId(jobs[0].id);
+          }
+          return;
+        }
+      } catch (err) {
+        console.error("Error restoring candidate profile draft:", err);
+      }
+    }
+
     if (currentCandidate) {
       setEditForm({
         name: currentCandidate.name,
@@ -68,6 +85,13 @@ export default function CandidateDashboard({
       setSelectedJobId(jobs[0].id);
     }
   }, [currentCandidate, currentUserEmail, jobs]);
+
+  // Save candidate profile draft to localStorage on change
+  useEffect(() => {
+    if (isEditing && editForm.name) {
+      localStorage.setItem("candidateProfileForm", JSON.stringify(editForm));
+    }
+  }, [editForm, isEditing]);
 
   // Handle Drag Events
   const handleDragOver = (e: React.DragEvent) => {
@@ -173,11 +197,17 @@ export default function CandidateDashboard({
         jobId: selectedJobId || "job-001"
       });
 
+      localStorage.removeItem("candidateProfileForm");
       setIsEditing(false);
       onRefreshData();
     } catch (err) {
       console.error("Profile save error:", err);
     }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    localStorage.removeItem("candidateProfileForm");
   };
 
   return (
@@ -445,7 +475,7 @@ export default function CandidateDashboard({
               <h3 className="text-xs font-semibold uppercase tracking-wider text-white font-display">
                 Edit Structured Profile Form
               </h3>
-              <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-white cursor-pointer">
+              <button onClick={handleCancelEdit} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -545,7 +575,7 @@ export default function CandidateDashboard({
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
+                  onClick={handleCancelEdit}
                   className="px-3 bg-slate-950 border border-slate-800 rounded text-slate-400 text-xs py-1.5 cursor-pointer"
                 >
                   Discard Changes

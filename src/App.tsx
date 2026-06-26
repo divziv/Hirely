@@ -10,10 +10,24 @@ import RecruiterDashboard from "./components/RecruiterDashboard";
 import CandidateDashboard from "./components/CandidateDashboard";
 import AnalyticsPanel from "./components/AnalyticsPanel";
 import { 
-  Sparkles, LogOut, Briefcase, User, Activity, Globe, RefreshCcw, HelpCircle 
+  Sparkles, LogOut, Briefcase, User, Activity, Globe, RefreshCcw, HelpCircle, Sun, Moon 
 } from "lucide-react";
 
 export default function App() {
+  // Theme State
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("theme") as "dark" | "light") || "dark"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("theme", theme);
+    if (theme === "light") {
+      document.documentElement.classList.add("light");
+    } else {
+      document.documentElement.classList.remove("light");
+    }
+  }, [theme]);
+
   // Global States
   const [role, setRole] = useState<AppRole | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
@@ -221,7 +235,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
+    <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between ${theme}`}>
       
       {/* 1. TOP PREMIUM HEADER BAR */}
       <header className="border-b border-slate-900 bg-slate-900/40 backdrop-blur-md sticky top-0 z-40">
@@ -276,7 +290,16 @@ export default function App() {
               )}
 
               {/* Status and Logged information */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {/* Theme Toggle Button */}
+                <button
+                  onClick={() => setTheme(prev => prev === "dark" ? "light" : "dark")}
+                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center"
+                  title={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
+                >
+                  {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
+                </button>
+
                 <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded-full hidden md:inline">
                   Active ID: {userEmail}
                 </span>
@@ -292,11 +315,22 @@ export default function App() {
 
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400">
-                Awaiting Auth Context
-              </span>
+            <div className="flex items-center gap-3">
+              {/* Theme Toggle for Unauthenticated users too */}
+              <button
+                onClick={() => setTheme(prev => prev === "dark" ? "light" : "dark")}
+                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center"
+                title={theme === "dark" ? "Switch to High-Contrast Light Mode" : "Switch to Dark Mode"}
+              >
+                {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-400" />}
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400">
+                  Awaiting Auth Context
+                </span>
+              </div>
             </div>
           )}
 

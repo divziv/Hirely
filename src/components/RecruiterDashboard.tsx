@@ -9,7 +9,7 @@ import {
   Sparkles, Briefcase, GraduationCap, MapPin, CheckCircle, Clock, 
   AlertTriangle, X, UserCheck, FileText, Plus, Search, Filter,
   TrendingUp, Award, Activity, Heart, ArrowRight, Wand2, Calendar, Mail,
-  Star, Coins, GitCompare
+  Star, Coins, GitCompare, Download
 } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 
@@ -148,20 +148,63 @@ export default function RecruiterDashboard({
     }
   };
   
-  // Job Post state
+  // Job Post state with Auto-Save from localStorage
   const [isPostingJob, setIsPostingJob] = useState(false);
-  const [newJob, setNewJob] = useState({
-    title: "",
-    company: "Redrob AI",
-    location: "Bengaluru, India (Hybrid)",
-    experienceRequired: 3,
-    roleType: "Full-time",
-    domain: "NLP & AI Core",
-    description: "",
-    mustHaveInput: "",
-    niceToHaveInput: ""
+  const [newJob, setNewJob] = useState(() => {
+    const saved = localStorage.getItem("newJobForm");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return {
+      title: "",
+      company: "Redrob AI",
+      location: "Bengaluru, India (Hybrid)",
+      experienceRequired: 3,
+      roleType: "Full-time",
+      domain: "NLP & AI Core",
+      description: "",
+      mustHaveInput: "",
+      niceToHaveInput: ""
+    };
   });
   const [isParsingJobDescription, setIsParsingJobDescription] = useState(false);
+
+  // Auto-save Job Posting form to localStorage
+  useEffect(() => {
+    if (newJob.title || newJob.description) {
+      localStorage.setItem("newJobForm", JSON.stringify(newJob));
+    } else {
+      localStorage.removeItem("newJobForm");
+    }
+  }, [newJob]);
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Meta+K to focus search input
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        const searchInput = document.getElementById("recruiter-search-bar");
+        if (searchInput) {
+          searchInput.focus();
+        }
+      }
+      // Ctrl+N or Meta+N to open New Job modal
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setIsPostingJob(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const handleAutoFillJob = async () => {
     if (!newJob.description) return;
@@ -514,6 +557,44 @@ export default function RecruiterDashboard({
     new Set(candidates.flatMap(c => c.skills))
   ).sort();
 
+  // Export Candidate list to CSV file
+  const handleExportToCSV = () => {
+    const headers = [
+      "Candidate Name", 
+      "Email Address", 
+      "Application Stage", 
+      "Interview Phase", 
+      "Experience (Years)", 
+      "Skills List", 
+      "Salary Expectation", 
+      "Salary Offer", 
+      "Applied Date"
+    ];
+    
+    const rows = filteredCandidates.map(c => [
+      `"${c.name.replace(/"/g, '""')}"`,
+      `"${c.email.replace(/"/g, '""')}"`,
+      `"${c.stage.replace(/"/g, '""')}"`,
+      `"${(c.interviewStage || "None").replace(/"/g, '""')}"`,
+      c.experienceYears,
+      `"${c.skills.join(", ").replace(/"/g, '""')}"`,
+      c.salaryExpectation || "N/A",
+      c.salaryOffer || "N/A",
+      `"${c.appliedDate || ""}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `recruitment_candidates_export_${selectedJob?.title.toLowerCase().replace(/\s+/g, "_") || "all"}_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredCandidates = (rankedResults.length > 0 ? rankedResults : candidates).filter(cand => {
     // 1. Text filter (includes name, email, stage, and skills)
     const matchesSearch = cand.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -595,9 +676,10 @@ export default function RecruiterDashboard({
             <button
               onClick={() => setIsPostingJob(true)}
               className="px-2 py-1 text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 rounded-md border border-emerald-500/20 transition-all flex items-center gap-1 cursor-pointer"
+              title="Post New Job (Ctrl+N)"
             >
               <Plus className="w-3.5 h-3.5" />
-              New JD
+              New JD <span className="text-[9px] opacity-70 font-mono ml-0.5 bg-slate-950 px-1 py-0.5 rounded border border-slate-800 text-slate-400">Ctrl+N</span>
             </button>
           </div>
 
@@ -643,13 +725,17 @@ export default function RecruiterDashboard({
             <label className="block text-[10px] text-slate-400 mb-1">Keyword Query Search</label>
             <div className="relative">
               <input
+                id="recruiter-search-bar"
                 type="text"
                 placeholder="Search name, skill, or stage..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs bg-slate-950 border border-slate-800 rounded-md pl-8 pr-2 py-1.5 text-slate-100 focus:outline-none focus:border-slate-600"
+                className="w-full text-xs bg-slate-950 border border-slate-800 rounded-md pl-8 pr-16 py-1.5 text-slate-100 focus:outline-none focus:border-slate-600"
               />
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+              <div className="absolute right-2 top-2 px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-[8px] font-mono rounded text-slate-500 flex items-center gap-0.5 pointer-events-none select-none">
+                <span>Ctrl</span><span>+</span><span>K</span>
+              </div>
             </div>
           </div>
 
@@ -1124,6 +1210,16 @@ export default function RecruiterDashboard({
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
                   {activeCompareMode ? "Exit Compare" : `Compare (${selectedCandidatesForCompare.length})`}
+                </button>
+
+                {/* Export to CSV Button */}
+                <button
+                  onClick={handleExportToCSV}
+                  className="px-2 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 rounded-md border border-emerald-500/20 transition-all flex items-center gap-1 cursor-pointer"
+                  title="Export matching candidates list to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export
                 </button>
               </div>
             </div>
