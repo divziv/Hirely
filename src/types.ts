@@ -85,6 +85,22 @@ export interface Candidate {
     submittedAt?: string;
   };
   skillProgress?: Record<string, 'Expert' | 'Intermediate' | 'Missing'>;
+  verificationRequests?: Array<{
+    id: string;
+    skillName: string;
+    status: 'Pending' | 'Completed';
+    assessmentLink: string;
+    requestedAt: string;
+    score?: number;
+  }>;
+  linkedInProfile?: {
+    headline: string;
+    summary: string;
+    industry: string;
+    pictureUrl?: string;
+    connectedAt: string;
+    publicProfileUrl: string;
+  };
 }
 
 export type AppRole = "recruiter" | "candidate";

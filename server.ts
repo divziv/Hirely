@@ -109,6 +109,22 @@ interface Candidate {
     submittedAt?: string;
   };
   skillProgress?: Record<string, 'Expert' | 'Intermediate' | 'Missing'>;
+  verificationRequests?: Array<{
+    id: string;
+    skillName: string;
+    status: 'Pending' | 'Completed';
+    assessmentLink: string;
+    requestedAt: string;
+    score?: number;
+  }>;
+  linkedInProfile?: {
+    headline: string;
+    summary: string;
+    industry: string;
+    pictureUrl?: string;
+    connectedAt: string;
+    publicProfileUrl: string;
+  };
 }
 
 // Recruiter Availability Data Seed
@@ -510,6 +526,442 @@ app.post("/api/candidates/:id/skills/progress", (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ---------------------------------------------------------
+// NEW ADDITIONS: BATCH EMAILING, SKILL VERIFICATION, OAUTH
+// ---------------------------------------------------------
+
+// POST perform bulk updates on multiple candidates
+app.post("/api/candidates/bulk-email", (req, res) => {
+  try {
+    const { candidateIds, subjectTemplate, bodyTemplate } = req.body;
+    if (!Array.isArray(candidateIds)) {
+      return res.status(400).json({ error: "candidateIds must be an array" });
+    }
+
+    const updatedCandidates: any[] = [];
+    candidateIds.forEach(id => {
+      const cand = CANDIDATES_DB.find(c => c.id === id);
+      if (cand) {
+        // Resolve job title
+        const job = JOBS_DB.find(j => j.id === cand.jobId) || { title: "Software Engineer" };
+        
+        // Automated tag replacement
+        const personalizedSubject = subjectTemplate
+          .replace(/\{\{candidate_name\}\}/gi, cand.name)
+          .replace(/\{\{job_title\}\}/gi, job.title)
+          .replace(/\{\{current_stage\}\}/gi, cand.stage);
+
+        const personalizedBody = bodyTemplate
+          .replace(/\{\{candidate_name\}\}/gi, cand.name)
+          .replace(/\{\{job_title\}\}/gi, job.title)
+          .replace(/\{\{current_stage\}\}/gi, cand.stage);
+
+        if (!cand.quickNotes) cand.quickNotes = [];
+        cand.quickNotes.push({
+          id: "email-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+          text: `[BATCH EMAIL SENT]\nSubject: ${personalizedSubject}\n\n${personalizedBody}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+          author: "Recruiter Batch Outbox"
+        });
+        updatedCandidates.push(cand);
+      }
+    });
+
+    res.json({ success: true, count: updatedCandidates.length });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST request technical skill verification
+app.post("/api/candidates/:id/request-verification", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { skillName } = req.body;
+    const cand = CANDIDATES_DB.find(c => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+
+    if (!cand.verificationRequests) {
+      cand.verificationRequests = [];
+    }
+
+    // Check if there is already a pending request for this skill
+    const existing = cand.verificationRequests.find(r => r.skillName === skillName && r.status === "Pending");
+    if (existing) {
+      return res.json({ alreadyExists: true, request: existing });
+    }
+
+    const requestId = "req-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    // Link can be formatted relative to the server/client
+    const assessmentLink = `/verify-skill?candId=${cand.id}&skillName=${encodeURIComponent(skillName)}&reqId=${requestId}`;
+
+    const newRequest = {
+      id: requestId,
+      skillName,
+      status: "Pending" as const,
+      assessmentLink,
+      requestedAt: new Date().toLocaleDateString()
+    };
+
+    cand.verificationRequests.push(newRequest);
+
+    // Log in candidate notes
+    if (!cand.quickNotes) cand.quickNotes = [];
+    cand.quickNotes.push({
+      id: "note-verify-" + Date.now(),
+      text: `Requested technical verification for skill: [${skillName}]. Assessment link generated: ${assessmentLink}`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+      author: "Skills Verification Bot"
+    });
+
+    res.json({ success: true, request: newRequest, candidate: cand });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST submit skill verification quiz
+app.post("/api/candidates/:id/submit-verification", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { skillName, reqId, score } = req.body;
+    const cand = CANDIDATES_DB.find(c => c.id === id);
+    if (!cand) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+
+    // Update request
+    if (cand.verificationRequests) {
+      const request = cand.verificationRequests.find(r => r.id === reqId || (r.skillName === skillName && r.status === "Pending"));
+      if (request) {
+        request.status = "Completed";
+        request.score = score;
+      }
+    }
+
+    // Elevate skill progress
+    if (!cand.skillProgress) {
+      cand.skillProgress = {};
+    }
+    cand.skillProgress[skillName] = "Expert";
+
+    // Add to skills list
+    if (!cand.skills.includes(skillName)) {
+      cand.skills.push(skillName);
+    }
+
+    // Log the success in quick notes
+    if (!cand.quickNotes) cand.quickNotes = [];
+    cand.quickNotes.push({
+      id: "note-verified-" + Date.now(),
+      text: `Successfully completed skill assessment for [${skillName}] with score of ${score}%. Skill level officially verified and elevated to Expert status!`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+      author: "Skills Verification Bot"
+    });
+
+    res.json({ success: true, candidate: cand });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET build LinkedIn OAuth URL
+app.get("/api/auth/linkedin/url", (req, res) => {
+  const { redirectUri, candidateId } = req.query;
+  const state = JSON.stringify({ candidateId, redirectUri });
+  const params = new URLSearchParams({
+    client_id: "linkedin_redrob_mock_client",
+    redirect_uri: redirectUri as string,
+    response_type: "code",
+    scope: "r_liteprofile r_emailaddress",
+    state: state,
+  });
+  res.json({ url: `/auth/linkedin/provider?${params.toString()}` });
+});
+
+// GET simulated LinkedIn authorization provider page (consent dialog)
+app.get("/auth/linkedin/provider", (req, res) => {
+  const { redirect_uri, state } = req.query;
+  
+  res.send(`
+    <html>
+      <head>
+        <title>LinkedIn Sign In & Authorization</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: 'Inter', sans-serif; }
+        </style>
+      </head>
+      <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
+        <!-- Blue LinkedIn Header -->
+        <header class="bg-slate-950 border-b border-slate-800 p-4">
+          <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="bg-[#0077b5] text-white font-bold px-2 py-0.5 rounded text-lg font-mono tracking-tighter">in</span>
+              <span class="text-xs font-semibold tracking-wider uppercase text-slate-400 font-mono">Simulated Developer Sandbox</span>
+            </div>
+            <span class="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-mono">Secure OAuth Session</span>
+          </div>
+        </header>
+
+        <main class="max-w-md w-full mx-auto px-4 py-8 flex-1 flex items-center justify-center">
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-6 shadow-2xl w-full space-y-5">
+            <div class="text-center space-y-1">
+              <div class="w-12 h-12 bg-[#0077b5]/10 text-[#0077b5] rounded-full flex items-center justify-center mx-auto text-xl font-bold font-mono">
+                in
+              </div>
+              <h2 class="text-md font-bold text-white tracking-tight">Authorize Redrob Recruiter Suite</h2>
+              <p class="text-xs text-slate-400">Requesting permission to link your professional credentials</p>
+            </div>
+
+            <div class="bg-slate-900/60 p-3 rounded border border-slate-900 text-[11px] text-slate-300 space-y-2.5">
+              <p class="font-semibold text-slate-200 uppercase tracking-wide font-mono text-[9px]">Requested Access Scopes:</p>
+              <div class="flex items-start gap-2">
+                <span class="text-[#0077b5] font-mono font-bold mt-0.5">&bull;</span>
+                <span><strong>r_liteprofile:</strong> Full name, high-quality headshot URL, and professional headline.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-[#0077b5] font-mono font-bold mt-0.5">&bull;</span>
+                <span><strong>r_emailaddress:</strong> Read primary email address and communications profile.</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-[#0077b5] font-mono font-bold mt-0.5">&bull;</span>
+                <span><strong>r_experience:</strong> Profile summary, industry info, and career history highlights.</span>
+              </div>
+            </div>
+
+            <form action="/auth/linkedin/callback" method="GET" class="space-y-4">
+              <input type="hidden" name="state" value="\${state || ""}" />
+              <input type="hidden" name="code" id="auth_code" value="mock_code_engineer" />
+
+              <div class="space-y-1.5">
+                <label class="block text-[10px] text-slate-400 uppercase font-mono">Select Testing Persona Profile</label>
+                <select 
+                  id="persona_select"
+                  onchange="updatePersonaInfo()"
+                  class="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-slate-700 cursor-pointer"
+                >
+                  <option value="engineer">Staff Software Engineer (Core Systems / Ex-Google)</option>
+                  <option value="data_scientist">Data Scientist & AI Specialist (Ex-Meta)</option>
+                  <option value="frontend">Senior Frontend Engineer (React & Tailwind specialist)</option>
+                  <option value="phd">AI Research Scientist (PhD in Machine Learning)</option>
+                </select>
+              </div>
+
+              <!-- Live Preview Card -->
+              <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-2">
+                <p class="text-[9px] font-mono text-slate-500 uppercase tracking-wider">Preview of Linked Profile Data:</p>
+                <div class="flex items-center gap-3">
+                  <img id="preview_avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" class="w-10 h-10 rounded-full border border-slate-700 object-cover" />
+                  <div class="min-w-0 flex-1">
+                    <p id="preview_name" class="text-xs font-bold text-white">Alice Vance</p>
+                    <p id="preview_headline" class="text-[10px] text-slate-300 truncate">Staff Software Engineer | Distributed Systems & AI/ML | Ex-Google</p>
+                  </div>
+                </div>
+                <p id="preview_summary" class="text-[10px] text-slate-400 italic">"Passionate software engineer with 10+ years of experience designing scalable real-time microservices."</p>
+              </div>
+
+              <div class="flex items-center gap-2 pt-1">
+                <button 
+                  type="button"
+                  onclick="window.close()"
+                  class="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded text-xs font-semibold border border-slate-800 cursor-pointer"
+                >
+                  Decline
+                </button>
+                <button 
+                  type="submit"
+                  class="flex-1 py-2 bg-[#0077b5] hover:bg-[#00669c] text-white font-bold rounded text-xs transition-colors cursor-pointer shadow-lg shadow-[#0077b5]/10"
+                >
+                  Authorize &amp; Link
+                </button>
+              </div>
+            </form>
+          </div>
+        </main>
+
+        <footer class="bg-slate-950 border-t border-slate-900 p-3 text-center">
+          <p class="text-[9px] text-slate-500 font-mono">&copy; LinkedIn Simulated OAuth Sandbox. No credentials or cookies stored.</p>
+        </footer>
+
+        <script>
+          const personas = {
+            engineer: {
+              code: "mock_code_engineer",
+              name: "Alice Vance",
+              headline: "Staff Software Engineer | Distributed Systems & AI/ML | Ex-Google",
+              summary: "Passionate software engineer with 10+ years of experience designing scalable real-time microservices and training custom transformer models. Active contributor to open-source systems.",
+              avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"
+            },
+            data_scientist: {
+              code: "mock_code_ds",
+              name: "David Chen",
+              headline: "Senior Data Scientist & AI/ML Engineer | Ex-Meta",
+              summary: "Quantitative researcher and data practitioner with 5+ years building production model pipelines, high-dimensional neural network embedding architectures, and optimized data lake aggregations.",
+              avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80"
+            },
+            frontend: {
+              code: "mock_code_frontend",
+              name: "Chloe Sterling",
+              headline: "Senior Frontend Engineer | UX & Creative Technologist",
+              summary: "UI design architect specialized in React, TypeScript, high-performance web canvases, micro-frontends, and tailwind optimization. Committed to high-fidelity interactions and design integrity.",
+              avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&h=150&q=80"
+            },
+            phd: {
+              code: "mock_code_phd",
+              name: "Dr. Marcus Thorne",
+              headline: "Principal AI Research Scientist | PhD in Machine Learning",
+              summary: "Deep learning researcher focusing on unsupervised representation learning, reinforcement learning from human feedback (RLHF), and high-throughput transformer attention scalability.",
+              avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80"
+            }
+          };
+
+          function updatePersonaInfo() {
+            const val = document.getElementById("persona_select").value;
+            const p = personas[val];
+            document.getElementById("auth_code").value = p.code;
+            document.getElementById("preview_name").textContent = p.name;
+            document.getElementById("preview_headline").textContent = p.headline;
+            document.getElementById("preview_summary").textContent = '"' + p.summary + '"';
+            document.getElementById("preview_avatar").src = p.avatar;
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+// GET OAuth callback handler - processes mock code and links LinkedIn details to candidate
+app.get("/auth/linkedin/callback", (req, res) => {
+  const { code, state } = req.query;
+  
+  let candidateId = "";
+  let redirectUri = "";
+  
+  try {
+    const parsedState = JSON.parse(state as string);
+    candidateId = parsedState.candidateId;
+    redirectUri = parsedState.redirectUri;
+  } catch (e) {
+    console.error("Failed to parse state from OAuth:", e);
+  }
+
+  // Get matching mock details based on auth code
+  const candidate_id_clean = candidateId;
+  const cand = CANDIDATES_DB.find(c => c.id === candidate_id_clean);
+
+  let mockProfile = {
+    headline: "Staff Software Engineer | Distributed Systems & AI/ML | Ex-Google",
+    summary: "Passionate software engineer with 10+ years of experience designing scalable real-time microservices and training custom transformer models. Active contributor to open-source systems.",
+    industry: "Technology, Information and Internet",
+    pictureUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80",
+    connectedAt: new Date().toLocaleString(),
+    publicProfileUrl: "https://www.linkedin.com/in/verified-redrob-" + candidate_id_clean
+  };
+
+  if (code === "mock_code_ds") {
+    mockProfile = {
+      headline: "Senior Data Scientist & AI/ML Engineer | Ex-Meta",
+      summary: "Quantitative researcher and data practitioner with 5+ years building production model pipelines, high-dimensional neural network embedding architectures, and optimized data lake aggregations.",
+      industry: "Financial Services / Technology",
+      pictureUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80",
+      connectedAt: new Date().toLocaleString(),
+      publicProfileUrl: "https://www.linkedin.com/in/verified-redrob-" + candidate_id_clean
+    };
+  } else if (code === "mock_code_frontend") {
+    mockProfile = {
+      headline: "Senior Frontend Engineer | UX & Creative Technologist",
+      summary: "UI design architect specialized in React, TypeScript, high-performance web canvases, micro-frontends, and tailwind optimization. Committed to high-fidelity interactions and design integrity.",
+      industry: "Technology & Entertainment",
+      pictureUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&h=150&q=80",
+      connectedAt: new Date().toLocaleString(),
+      publicProfileUrl: "https://www.linkedin.com/in/verified-redrob-" + candidate_id_clean
+    };
+  } else if (code === "mock_code_phd") {
+    mockProfile = {
+      headline: "Principal AI Research Scientist | PhD in Machine Learning",
+      summary: "Deep learning researcher focusing on unsupervised representation learning, reinforcement learning from human feedback (RLHF), and high-throughput transformer attention scalability.",
+      industry: "Research & Development / AI Labs",
+      pictureUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80",
+      connectedAt: new Date().toLocaleString(),
+      publicProfileUrl: "https://www.linkedin.com/in/verified-redrob-" + candidate_id_clean
+    };
+  }
+
+  if (cand) {
+    cand.linkedInProfile = mockProfile;
+
+    // Log in candidate's notes/history
+    if (!cand.quickNotes) cand.quickNotes = [];
+    cand.quickNotes.push({
+      id: "note-li-" + Date.now(),
+      text: "LinkedIn Professional Profile linked: [" + mockProfile.headline + "]. Linked summary imported.",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " " + new Date().toLocaleDateString(),
+      author: "LinkedIn Integration"
+    });
+  }
+
+  res.send(\`
+    <html>
+      <head>
+        <title>LinkedIn Authentication Success</title>
+        <style>
+          body {
+            background-color: #0b1329;
+            color: #f1f5f9;
+            font-family: system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+          }
+          .card {
+            background: #0f172a;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            border: 1px solid #1e293b;
+            max-width: 400px;
+          }
+          .logo {
+            background: #0077b5;
+            color: white;
+            font-weight: bold;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+          }
+          h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: #ffffff; }
+          p { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1.5rem; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="logo font-sans">in</div>
+          <h1>LinkedIn Connected</h1>
+          <p>Your simulated professional profile has been connected successfully to the Redrob Recruiter Suite. This popup will close automatically.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', candidateId: "${candidate_id_clean}" }, '*');
+              window.close();
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+        </div>
+      </body>
+    </html>
+  \`);
 });
 
 // GET recruiter availability slots

@@ -419,6 +419,43 @@ export default function CandidateDashboard({
                 </p>
               </div>
 
+              {/* Technical Skill Verification Requests */}
+              {currentCandidate.verificationRequests && currentCandidate.verificationRequests.length > 0 && (
+                <div className="p-3 bg-indigo-500/5 rounded-lg border border-indigo-500/10 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-indigo-400 font-mono font-bold uppercase block">Official Skill Verifications</span>
+                    <span className="text-[8px] uppercase bg-indigo-500/20 text-indigo-300 font-mono px-1.5 rounded border border-indigo-500/30">Action Required</span>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Hiring managers requested official verification for your expertise. Click below to begin a short interactive coding assessment:
+                  </p>
+                  <div className="space-y-2">
+                    {currentCandidate.verificationRequests.map(req => (
+                      <div key={req.id} className="flex items-center justify-between p-2.5 bg-slate-950/80 border border-slate-900 rounded-lg">
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-semibold text-white">{req.skillName}</span>
+                          <p className="text-[9px] text-slate-500 font-mono">Requested on {req.requestedAt}</p>
+                        </div>
+                        <div>
+                          {req.status === "Pending" ? (
+                            <a
+                              href={req.assessmentLink}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[10px] cursor-pointer transition-colors font-mono block text-center"
+                            >
+                              Take Assessment
+                            </a>
+                          ) : (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded font-mono font-bold">
+                              Verified ({req.score}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Interactive Skills Learning Progress Bridge */}
               <div className="p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/10 space-y-3">
                 <span className="text-[10px] text-emerald-400 font-mono font-bold uppercase block">My Skills Learning &amp; Progress Hub</span>

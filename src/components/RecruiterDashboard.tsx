@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect } from "react";
 import { Job, Candidate } from "../types";
+import { jsPDF } from "jspdf";
 import { 
   Sparkles, Briefcase, GraduationCap, MapPin, CheckCircle, Clock, 
   AlertTriangle, X, UserCheck, FileText, Plus, Search, Filter,
   TrendingUp, Award, Activity, Heart, ArrowRight, Wand2, Calendar, Mail,
-  Star, Coins, GitCompare, Download
+  Star, Coins, GitCompare, Download, Linkedin, ExternalLink, Copy, CheckCircle2
 } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
 
@@ -234,6 +235,231 @@ export default function RecruiterDashboard({
   const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<string>("none");
   const [customEmailSubject, setCustomEmailSubject] = useState<string>("");
   const [customEmailBody, setCustomEmailBody] = useState<string>("");
+
+  // LinkedIn and Technical Verification States
+  const [selectedSkillForVerify, setSelectedSkillForVerify] = useState<string>("");
+  const [isRequestingVerify, setIsRequestingVerify] = useState(false);
+  const [lastGeneratedVerifyLink, setLastGeneratedVerifyLink] = useState<{ skill: string; link: string } | null>(null);
+
+  // Message success listening
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      // Validate origin
+      const origin = event.origin;
+      if (!origin.endsWith(".run.app") && !origin.includes("localhost")) {
+        return;
+      }
+      if (event.data?.type === "OAUTH_AUTH_SUCCESS") {
+        onRefreshData();
+        // Automatically find updated candidate
+        const updatedCandidate = candidates.find(c => c.id === event.data.candidateId);
+        if (updatedCandidate) {
+          setActiveCandidateForView(updatedCandidate);
+        }
+      }
+    };
+    window.addEventListener("message", handleOAuthMessage);
+    return () => window.removeEventListener("message", handleOAuthMessage);
+  }, [candidates, activeCandidateForView, onRefreshData]);
+
+  // Handle LinkedIn OAuth Connect
+  const handleConnectLinkedIn = async (candId: string) => {
+    try {
+      const redirectUri = `${window.location.origin}/auth/linkedin/callback`;
+      const res = await fetch(`/api/auth/linkedin/url?redirectUri=${encodeURIComponent(redirectUri)}&candidateId=${candId}`);
+      if (!res.ok) throw new Error("Failed to build LinkedIn OAuth URL");
+      const { url } = await res.json();
+      
+      // Open the OAuth provider URL directly in a popup window
+      const authWindow = window.open(url, "linkedin_oauth_popup", "width=550,height=650");
+      if (!authWindow) {
+        alert("Please allow popups to connect your LinkedIn profile!");
+      }
+    } catch (err) {
+      console.error("LinkedIn OAuth error:", err);
+    }
+  };
+
+  // Request Expert Verification Link
+  const handleRequestVerification = async (candId: string, skill: string) => {
+    if (!skill) return;
+    setIsRequestingVerify(true);
+    setLastGeneratedVerifyLink(null);
+    try {
+      const res = await fetch(`/api/candidates/${candId}/request-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillName: skill })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        onRefreshData();
+        // Since the link is relative, build a full URL for the recruiter to copy and send
+        const fullLink = `${window.location.origin}${data.request.assessmentLink}`;
+        setLastGeneratedVerifyLink({ skill, link: fullLink });
+      }
+    } catch (err) {
+      console.error("Verification request error:", err);
+    } finally {
+      setIsRequestingVerify(false);
+    }
+  };
+
+  // Generate and export a gorgeous candidate profile + evaluation PDF summary
+  const handleExportProfilePDF = (cand: Candidate) => {
+    try {
+      const doc = new jsPDF();
+      const job = jobs.find(j => j.id === cand.jobId) || { title: "Technical Consultant" };
+
+      // Elegant dark indigo / emerald theme colors
+      const primaryColor = [15, 23, 42]; // Slate 900
+      const accentColor = [16, 185, 129]; // Emerald 500
+      
+      // Page 1 Header Banner
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, 210, 40, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.text("REDROB INTELLIGENT RECRUITMENT SUITE", 15, 18);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(148, 163, 184); // Slate 400
+      doc.text("VERIFIED CANDIDATE ASSESSMENT DOSSIER & COGNITIVE FIT SUMMARY", 15, 28);
+      
+      // Horizontal Accent Rule
+      doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+      doc.setLineWidth(1.5);
+      doc.line(0, 40, 210, 40);
+
+      // Section 1: Candidate Profile Coordinates
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("1. CANDIDATE PROFILE COORDINATES", 15, 55);
+      
+      doc.setDrawColor(226, 232, 240); // Slate 200
+      doc.setLineWidth(0.5);
+      doc.line(15, 58, 195, 58);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("Full Name:", 15, 68);
+      doc.setFont("helvetica", "normal");
+      doc.text(cand.name || "Anonymous Professional", 48, 68);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Email Coordinates:", 15, 75);
+      doc.setFont("helvetica", "normal");
+      doc.text(cand.email || "withheld@privacy.suite", 48, 75);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Target Position:", 15, 82);
+      doc.setFont("helvetica", "normal");
+      doc.text(job.title, 48, 82);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Candidate Stage:", 15, 89);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${cand.stage} ${cand.interviewStage ? `(${cand.interviewStage} Round)` : ""}`, 48, 89);
+
+      // Section 2: Team Interview Scorecard
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("2. STRUCTURED INTERVIEW SCORECARD", 15, 105);
+      doc.line(15, 108, 195, 108);
+
+      if (cand.structuredFeedback) {
+        const fb = cand.structuredFeedback;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        
+        doc.text("Technical Proficiency:", 15, 118);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${fb.technicalProficiency} / 5  (${fb.technicalProficiency >= 4 ? "Excellent" : fb.technicalProficiency >= 3 ? "Proficient" : "Needs Review"})`, 60, 118);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Communication Skills:", 15, 125);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${fb.communication} / 5  (${fb.communication >= 4 ? "Outstanding" : fb.communication >= 3 ? "Clear" : "Introverted"})`, 60, 125);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Cultural Alignment:", 15, 132);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${fb.culturalAlignment} / 5  (${fb.culturalAlignment >= 4 ? "High Synergy" : fb.culturalAlignment >= 3 ? "Aligned" : "Alternative Focus"})`, 60, 132);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Overall Recommendation:", 15, 139);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.text(fb.overallRecommendation || "STRONGLY RECOMMEND", 60, 139);
+        
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.setFont("helvetica", "bold");
+        doc.text("Evaluator Assessment Notes:", 15, 148);
+        doc.setFont("helvetica", "normal");
+        const splitFbNotes = doc.splitTextToSize(fb.additionalNotes || "No specific feedback summaries recorded by hiring team yet.", 135);
+        doc.text(splitFbNotes, 60, 148);
+      } else {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(10);
+        doc.text("No structured interview evaluation has been finalized for this candidate profile yet.", 15, 118);
+      }
+
+      // Section 3: Verified Skills & Strengths
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("3. DETAILED TECHNICAL SKILLSET & PROGRESS", 15, 185);
+      doc.line(15, 188, 195, 188);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("General Stack:", 15, 198);
+      doc.setFont("helvetica", "normal");
+      const candSkills = cand.skills.join(", ");
+      const splitSkills = doc.splitTextToSize(candSkills || "No skills uploaded.", 45);
+      doc.text(splitSkills, 45, 198);
+
+      // Verify progress levels
+      if (cand.skillProgress) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Verified Mastery:", 15, 212);
+        doc.setFont("helvetica", "normal");
+        const entries = Object.entries(cand.skillProgress).map(([k, v]) => `${k} (${v})`);
+        const splitProgStr = doc.splitTextToSize(entries.join(", "), 140);
+        doc.text(splitProgStr, 45, 212);
+      }
+
+      // Page 2: Original Resume Transcript
+      doc.addPage();
+      
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, 210, 20, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text("APPENDIX: CANDIDATE RESUME PORTAL TRANSCRIPT", 15, 13);
+      
+      doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+      doc.setLineWidth(1.5);
+      doc.line(0, 20, 210, 20);
+
+      doc.setTextColor(51, 65, 85); // Slate 700
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      
+      const resumeTextRaw = cand.resumeText || "No raw resume text attached to candidate record.";
+      const splitResumeText = doc.splitTextToSize(resumeTextRaw, 180);
+      doc.text(splitResumeText, 15, 30);
+
+      doc.save(`Redrob-Candidate-Summary-${cand.name.replace(/\s+/g, "_") || "Dossier"}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    }
+  };
 
   // Structured Interview Feedback Form states
   const [isEvaluatingCandidate, setIsEvaluatingCandidate] = useState<boolean>(false);
@@ -1326,6 +1552,8 @@ export default function RecruiterDashboard({
                       if (!val) return;
                       if (val === "reject") {
                         handleOpenBulkActionModal("reject");
+                      } else if (val === "email") {
+                        handleOpenBulkActionModal("email");
                       } else {
                         handleOpenBulkActionModal("stage", val);
                       }
@@ -1339,6 +1567,7 @@ export default function RecruiterDashboard({
                     <option value="Offer">Move: Offer</option>
                     <option value="Hired">Move: Hired</option>
                     <option value="reject">Bulk Reject Candidates</option>
+                    <option value="email">Send Personalized Batch Email</option>
                   </select>
                 </div>
               </div>
@@ -1802,6 +2031,132 @@ export default function RecruiterDashboard({
           
           /* DETAILED SINGLE CANDIDATE AND RESUME INSIGHT PANEL */
           <div className="space-y-4">
+
+            {/* PROFESSIONAL EXECUTIVE ACTIONS CONSOLE */}
+            <div className="bg-slate-900 border border-slate-850 rounded-xl p-4 shadow-xl space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400 font-mono flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  Candidate Executive Console
+                </h3>
+                <button
+                  onClick={() => handleExportProfilePDF(activeCandidateForView)}
+                  className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-all font-mono shadow-md shadow-indigo-600/10"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-300" />
+                  Export Profile as PDF
+                </button>
+              </div>
+
+              {/* Grid of Actions: LinkedIn Connect & Skill Verification Request */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                
+                {/* 1. LinkedIn OAuth Integration */}
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-900 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono text-indigo-400 font-bold uppercase block flex items-center gap-1">
+                      <Linkedin className="w-3.5 h-3.5 fill-current" />
+                      Professional LinkedIn Profile
+                    </span>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Sync verified corporate coordinates directly using standard LinkedIn OAuth authorization channels.
+                    </p>
+                  </div>
+
+                  {activeCandidateForView.linkedInProfile ? (
+                    <div className="bg-slate-900/50 p-2.5 rounded border border-slate-900 flex items-start gap-2.5 text-[10px] animate-fadeIn">
+                      <img 
+                        src={activeCandidateForView.linkedInProfile.profilePictureUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=60"} 
+                        alt="LinkedIn Headshot" 
+                        className="w-8 h-8 rounded-full border border-slate-700 shrink-0 object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="space-y-0.5">
+                        <strong className="text-white font-medium block">{activeCandidateForView.linkedInProfile.headline || "Staff Systems Architect"}</strong>
+                        <span className="text-slate-400 block line-clamp-2">{activeCandidateForView.linkedInProfile.summary || "Specializes in full-stack Cloud-Native design systems and database optimization."}</span>
+                        <a 
+                          href={activeCandidateForView.linkedInProfile.publicProfileUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-indigo-400 hover:text-indigo-300 font-mono text-[9px] flex items-center gap-1 pt-1 font-bold"
+                        >
+                          View Verified Profile
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleConnectLinkedIn(activeCandidateForView.id)}
+                      className="w-full py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-white rounded text-[10px] flex items-center justify-center gap-1.5 cursor-pointer font-mono text-slate-300 transition-all font-semibold"
+                    >
+                      <Linkedin className="w-3.5 h-3.5 fill-current text-indigo-400" />
+                      Connect LinkedIn (OAuth)
+                    </button>
+                  )}
+                </div>
+
+                {/* 2. Skill Verification Assessments */}
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-900 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase block flex items-center gap-1">
+                      <Award className="w-3.5 h-3.5" />
+                      Technical Skill Verification
+                    </span>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Initiate a custom automated multiple-choice assessment. Verify standard skills at an Expert level.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex gap-1.5">
+                      <select
+                        value={selectedSkillForVerify}
+                        onChange={(e) => setSelectedSkillForVerify(e.target.value)}
+                        className="flex-grow bg-slate-900 border border-slate-800 text-[10px] text-slate-300 rounded px-2 py-1 focus:outline-none"
+                      >
+                        <option value="">Select skill to verify...</option>
+                        {activeCandidateForView.skills.map(sk => (
+                          <option key={sk} value={sk}>{sk}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleRequestVerification(activeCandidateForView.id, selectedSkillForVerify)}
+                        disabled={!selectedSkillForVerify || isRequestingVerify}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded text-[10px] font-mono cursor-pointer transition-all shrink-0"
+                      >
+                        {isRequestingVerify ? "Requesting..." : "Send Request"}
+                      </button>
+                    </div>
+
+                    {lastGeneratedVerifyLink && (
+                      <div className="bg-slate-900 p-2 rounded border border-indigo-500/20 text-[9px] font-mono space-y-1.5 animate-fadeIn">
+                        <span className="text-emerald-400 font-bold block">✓ Link generated successfully!</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={lastGeneratedVerifyLink.link}
+                            className="bg-slate-950 border border-slate-850 rounded p-1 text-slate-300 text-[8px] w-full focus:outline-none"
+                          />
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(lastGeneratedVerifyLink.link);
+                              alert("Copied custom verification link to clipboard!");
+                            }}
+                            className="p-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 border border-slate-700 cursor-pointer"
+                            title="Copy link to clipboard"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
             
             {/* IN-BROWSER RESUME VIEWER (NO DOWNLOAD REQUIRED) */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl">

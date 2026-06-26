@@ -9,6 +9,7 @@ import AuthPanel from "./components/AuthPanel";
 import RecruiterDashboard from "./components/RecruiterDashboard";
 import CandidateDashboard from "./components/CandidateDashboard";
 import AnalyticsPanel from "./components/AnalyticsPanel";
+import SkillVerificationQuiz from "./components/SkillVerificationQuiz";
 import { 
   Sparkles, LogOut, Briefcase, User, Activity, Globe, RefreshCcw, HelpCircle, Sun, Moon 
 } from "lucide-react";
@@ -33,6 +34,22 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+
+  // State for handling active skill verification from url query params
+  const [verificationQuery, setVerificationQuery] = useState<{
+    candId: string;
+    skillName: string;
+    reqId: string;
+  } | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const candId = params.get("candId");
+    const skillName = params.get("skillName");
+    const reqId = params.get("reqId");
+    if (candId && skillName && reqId) {
+      return { candId, skillName, reqId };
+    }
+    return null;
+  });
   
   // Tab states for Recruiter Workspace ("discover" | "analytics")
   const [recruiterActiveTab, setRecruiterActiveTab] = useState<"discover" | "analytics">("discover");
@@ -348,8 +365,23 @@ export default function App() {
       {/* 3. MAIN WORKSPACE CONTAINER */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-6">
         
-        {/* If user session is inactive, show gateway gate */}
-        {!role ? (
+        {/* If a skill verification query is present, show the assessment page directly */}
+        {verificationQuery ? (
+          <div className="flex flex-col items-center justify-center py-12 animate-fadeIn">
+            <SkillVerificationQuiz
+              candId={verificationQuery.candId}
+              skillName={verificationQuery.skillName}
+              reqId={verificationQuery.reqId}
+              onComplete={() => {
+                showAlert("Technical skill level successfully verified and elevated!", "success");
+                // Clear query params
+                window.history.replaceState({}, document.title, window.location.pathname);
+                setVerificationQuery(null);
+                refreshWorkspaceData();
+              }}
+            />
+          </div>
+        ) : !role ? (
           <AuthPanel 
             onLogin={handleUserLogin} 
             defaultCandidateEmail="20h51a6677@gmail.com" 
