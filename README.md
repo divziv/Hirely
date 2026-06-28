@@ -146,3 +146,5 @@ The repository is built for parallel development. The Express server acts as a r
 
 ### Challenge Submission Footnote
 Developed as a workable Proof-of-Concept demonstrating predictive candidate discoveries for **The Data & AI Challenge - India Runs hackathon by Redrob AI**.
+
+App Link: https://ai.studio/apps/a08186a5-5788-4fc7-83c6-69edefecbbf7?fullscreenApplet=true
