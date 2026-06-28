@@ -73,7 +73,7 @@ export default function RecruiterDashboard({
     }
   };
 
-  const handleOpenBulkActionModal = (actionType: 'stage' | 'reject', stage?: string) => {
+  const handleOpenBulkActionModal = (actionType: 'stage' | 'reject' | 'email', stage?: string) => {
     setBulkActionModal({
       isOpen: true,
       actionType,
@@ -85,6 +85,10 @@ export default function RecruiterDashboard({
       setSelectedEmailTemplate("reject");
       setCustomEmailSubject("Application Update: Redrob Team");
       setCustomEmailBody("Dear Candidate,\n\nThank you for your time and application. Although your background is impressive, we have decided to move forward with other candidates whose skillsets align more closely with our current technical requirements.\n\nWe wish you the absolute best in your career pursuits.\n\nBest regards,\nRecruitment Team");
+    } else if (actionType === "email") {
+      setSelectedEmailTemplate("outreach");
+      setCustomEmailSubject("Application Update: Status Update for {{candidate_name}}");
+      setCustomEmailBody("Dear {{candidate_name}},\n\nI hope this email finds you well!\n\nWe are excited to share some important updates regarding your ongoing application. Our recruitment team has been reviewing your technical alignment, and we are absolutely thrilled with your profile.\n\nWe will reach out with the exact next steps shortly.\n\nBest regards,\nRecruitment Team");
     } else if (stage === "Interview") {
       setSelectedEmailTemplate("invite");
       setCustomEmailSubject("Technical Interview Invitation - Redrob");

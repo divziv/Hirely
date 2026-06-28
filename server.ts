@@ -906,7 +906,7 @@ app.get("/auth/linkedin/callback", (req, res) => {
     });
   }
 
-  res.send(\`
+  res.send(`
     <html>
       <head>
         <title>LinkedIn Authentication Success</title>
@@ -961,7 +961,7 @@ app.get("/auth/linkedin/callback", (req, res) => {
         </div>
       </body>
     </html>
-  \`);
+  `);
 });
 
 // GET recruiter availability slots
@@ -1041,7 +1041,7 @@ app.post("/api/candidates/:id/draft-outreach", async (req, res) => {
       console.log(`AI drafting outreach email for ${cand.name}...`);
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Draft a highly professional, warm, personalized outreach recruitment email for candidate "${cand.name}" who is shortlisted for the role "${job.title}" at "${job.company}". Leverage key highlights from their CV/resume text below: \n\nResume/Bio:\n${cand.resumeText || ""}\nSkills:\n${cand.skills.join(", ")}\n\nJob details:\n${job.description}\n\nMaintain a friendly, authentic, and compelling tone. Include placeholders for the recruiter to inspect/customize.`,
+        contents: "Draft a highly professional, warm, personalized outreach recruitment email for candidate \"" + cand.name + "\" who is shortlisted for the role \"" + job.title + "\" at \"" + job.company + "\". Leverage key highlights from their CV/resume text below:\n\nResume/Bio:\n" + (cand.resumeText || "") + "\n\nSkills:\n" + cand.skills.join(", ") + "\n\nJob details:\n" + job.description + "\n\nMaintain a friendly, authentic, and compelling tone. Include placeholders for the recruiter to inspect/customize.",
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -1082,7 +1082,7 @@ app.post("/api/talent-source/search", async (req, res) => {
       console.log(`AI sourcing passive talent for Job: ${job.title}...`);
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Generate exactly 3 realistic, highly detailed, and compelling passive candidate profiles sourced from public directories that would perfectly match the active job requirement "${job.title}". Utilize the job's must-have skills [${job.mustHaveSkills.join(", ")}] and nice-to-have skills [${job.niceToHaveSkills.join(", ")}]. Ensure the profiles look realistic with Indian names, current top tech companies, experience history, portfolios, and a solid semantic alignment justification.\n\nCustom prompt guidance: ${customQuery || "None"}`,
+        contents: "Generate exactly 3 realistic, highly detailed, and compelling passive candidate profiles sourced from public directories that would perfectly match the active job requirement \"" + job.title + "\". Utilize the job's must-have skills [" + job.mustHaveSkills.join(", ") + "] and nice-to-have skills [" + job.niceToHaveSkills.join(", ") + "]. Ensure the profiles look realistic with Indian names, current top tech companies, experience history, portfolios, and a solid semantic alignment justification.\n\nCustom prompt guidance: " + (customQuery || "None"),
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -1497,23 +1497,9 @@ app.post("/api/candidates/rank", async (req, res) => {
 
       if (ai) {
         try {
-          const systemContext = `You are Redrob's premium recruiter bot. Your task is to mathematically and contextually score the relevance of a candidate's profile against a Job Description. 
-Assess overall domain alignment, core skill mastery, and deep functional credentials (not just mechanical word repetition).`;
+          const systemContext = "You are Redrob's premium recruiter bot. Your task is to mathematically and contextually score the relevance of a candidate's profile against a Job Description. \nAssess overall domain alignment, core skill mastery, and deep functional credentials (not just mechanical word repetition).";
 
-          const userQuery = `Job Opening: "${job.title}" at ${job.company}
-Required Core Skills: ${job.mustHaveSkills.join(", ")}
-Job Brief: ${job.description}
-
-Candidate Profile:
-Name: ${cand.name}
-Academics/Education: ${cand.education.join("; ")}
-Tracked Skills: ${cand.skills.join(", ")}
-Years Experience: ${cand.experienceYears}
-Professional Resume Text summary: ${cand.resumeText}
-Selected Projects: ${cand.projects.join(". ")}
-
-Analyze this and output strictly a valid human-readable JSON block with keys "semanticScore" (a float between 0.00 and 1.00 indicating conceptual domain relevance), "fitMatchExplanation" (a 2-3 sentence executive recap of why they fit), and "gapAnalysis" (a list of 1-3 tool or concept gaps/strengths of note).
-Strict rule: Output ONLY the raw JSON format with no Markdown.`;
+          const userQuery = "Job Opening: \"" + job.title + "\" at " + job.company + "\nRequired Core Skills: " + job.mustHaveSkills.join(", ") + "\nJob Brief: " + job.description + "\n\nCandidate Profile:\nName: " + cand.name + "\nAcademics/Education: " + cand.education.join("; ") + "\nTracked Skills: " + cand.skills.join(", ") + "\nYears Experience: " + cand.experienceYears + "\nProfessional Resume Text summary: " + cand.resumeText + "\nSelected Projects: " + cand.projects.join(". ") + "\n\nAnalyze this and output strictly a valid human-readable JSON block with keys \"semanticScore\" (a float between 0.00 and 1.00 indicating conceptual domain relevance), \"fitMatchExplanation\" (a 2-3 sentence executive recap of why they fit), and \"gapAnalysis\" (a list of 1-3 tool or concept gaps/strengths of note).\nStrict rule: Output ONLY the raw JSON format with no Markdown.";
 
           const aiResponse = await ai.models.generateContent({
             model: "gemini-3.5-flash",
@@ -1660,24 +1646,13 @@ app.post("/api/jobs/generate-description", async (req, res) => {
       console.log(`System Status: AI generating job description for ${title}...`);
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Draft a highly professional, engaging, and detailed job description for a role titled "${title}" requiring the following skills: ${skills || "AI, Cloud, Python"}. Include an 'About the Role' section, 'Core Responsibilities', and why a candidate should apply. Highlight the specified skills naturally. Format with clean structure.`,
+        contents: "Draft a highly professional, engaging, and detailed job description for a role titled \"" + title + "\" requiring the following skills: " + (skills || "AI, Cloud, Python") + ". Include an 'About the Role' section, 'Core Responsibilities', and why a candidate should apply. Highlight the specified skills naturally. Format with clean structure.",
       });
       return res.json({ description: response.text });
     }
     
     // Fallback description
-    const fallbackDesc = `About the Role:
-We are seeking a talented and driven ${title} to join our core technical team. In this role, you will lead development, optimize pipelines, and innovate.
-
-Core Requirements:
-- Hands-on experience with: ${skills || "relevant technologies"}
-- Minimum 3+ years in a software development environment
-- Proven capability to collaborate, design, and deliver robust software.
-
-Key Responsibilities:
-- Design and implement critical features and core backend components
-- Champion clean code, unit tests, and software engineering best practices
-- Mentor junior engineers and collaborate across product lines.`;
+    const fallbackDesc = "About the Role:\nWe are seeking a talented and driven " + title + " to join our core technical team. In this role, you will lead development, optimize pipelines, and innovate.\n\nCore Requirements:\n- Hands-on experience with: " + (skills || "relevant technologies") + "\n- Minimum 3+ years in a software development environment\n- Proven capability to collaborate, design, and deliver robust software.\n\nKey Responsibilities:\n- Design and implement critical features and core backend components\n- Champion clean code, unit tests, and software engineering best practices\n- Mentor junior engineers and collaborate across product lines.";
     return res.json({ description: fallbackDesc });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1699,7 +1674,7 @@ app.post("/api/candidates/match-rationale", async (req, res) => {
       console.log(`System Status: AI generating match rationale for ${candidate.name} and ${job.title}...`);
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Analyze why the candidate "${candidate.name}" is a fit for the job "${job.title}" at "${job.company}". Highlight key semantic overlaps, experience alignment, potential soft skills, and any potential skill gaps.\n\nJob Title: ${job.title}\nJob Description: ${job.description}\nJob Must-Have Skills: ${job.mustHaveSkills.join(", ")}\nJob Nice-to-Have Skills: ${job.niceToHaveSkills.join(", ")}\n\nCandidate Resume / Experience:\n${candidate.resumeText || ""}\nCandidate Skills: ${candidate.skills.join(", ")}\nCandidate Experience Years: ${candidate.experienceYears}\nCandidate Behavioral Scores: Ownership=${candidate.behavioralSignals?.ownership || 4}, Leadership=${candidate.behavioralSignals?.leadership || 4}, Collaboration=${candidate.behavioralSignals?.collaboration || 4}`,
+        contents: "Analyze why the candidate \"" + candidate.name + "\" is a fit for the job \"" + job.title + "\" at \"" + job.company + "\". Highlight key semantic overlaps, experience alignment, potential soft skills, and any potential skill gaps.\n\nJob Title: " + job.title + "\nJob Description: " + job.description + "\nJob Must-Have Skills: " + job.mustHaveSkills.join(", ") + "\nJob Nice-to-Have Skills: " + job.niceToHaveSkills.join(", ") + "\n\nCandidate Resume / Experience:\n" + (candidate.resumeText || "") + "\nCandidate Skills: " + candidate.skills.join(", ") + "\nCandidate Experience Years: " + candidate.experienceYears + "\nCandidate Behavioral Scores: Ownership=" + (candidate.behavioralSignals?.ownership || 4) + ", Leadership=" + (candidate.behavioralSignals?.leadership || 4) + ", Collaboration=" + (candidate.behavioralSignals?.collaboration || 4),
         config: {
           responseMimeType: "application/json",
           responseSchema: {
