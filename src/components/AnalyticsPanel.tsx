@@ -6,7 +6,7 @@
 import React from "react";
 import { Job, Candidate } from "../types";
 import { 
-  TrendingUp, Award, Activity, Heart, Clock, AlertTriangle, CheckCircle, ArrowRight, BarChart3, Coins, Users, ShieldAlert
+  TrendingUp, Award, Activity, Heart, Clock, AlertTriangle, CheckCircle, ArrowRight, BarChart3, Coins, Users, ShieldAlert, Download
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -183,8 +183,112 @@ export default function AnalyticsPanel({ jobs, candidates }: AnalyticsPanelProps
     };
   });
 
+  const handleExportCSV = () => {
+    // 1. Build Candidate Data CSV section
+    const headers = [
+      "Candidate ID", 
+      "Name", 
+      "Email", 
+      "Role Title", 
+      "Company", 
+      "Current Stage", 
+      "Interview Stage", 
+      "Experience (Years)", 
+      "Applied Date", 
+      "Skills", 
+      "Expected Salary (LPA)", 
+      "Salary Offer (LPA)", 
+      "Recruiter Notes"
+    ];
+    
+    const candidateRows = candidates.map(c => {
+      const job = jobs.find(j => j.id === c.jobId);
+      const roleTitle = job ? job.title : "N/A";
+      const company = job ? job.company : "N/A";
+      const skillsStr = c.skills ? c.skills.join("; ") : "";
+      const expectedLPA = c.salaryExpectation ? (c.salaryExpectation / 100000).toFixed(2) : "0.00";
+      const offerLPA = c.salaryOffer ? (c.salaryOffer / 100000).toFixed(2) : "0.00";
+      const notesCleaned = c.recruiterNotes ? c.recruiterNotes.replace(/"/g, '""').replace(/\n/g, ' ') : "";
+
+      return [
+        c.id,
+        c.name || "N/A",
+        c.email || "N/A",
+        roleTitle,
+        company,
+        c.stage || "N/A",
+        c.interviewStage || "None",
+        c.experienceYears || "0",
+        c.appliedDate || "N/A",
+        skillsStr,
+        expectedLPA,
+        offerLPA,
+        notesCleaned
+      ];
+    });
+
+    // 2. Build Metrics summary section
+    const metricsHeaders = ["Metric Name", "Value", "Description"];
+    const metricsRows = [
+      ["Total Active Candidates", totalInPipeline.toString(), "Overall candidates in the talent system"],
+      ["Average Days-To-Hire", calculatedAverageTimeToHireDays.toString(), "Duration from Applied to Offer state"],
+      ["Hiring/Placement Rate", `${placementRatePercent}%`, "Redrob match retention percentage"],
+      ["Semantic Rank Accuracy", `${talentDiscoveryAccuracy}%`, "Accuracy vs. manual screening decisions"],
+      ["Average Expected Salary (LPA)", (avgExpected / 100000).toFixed(2), "Mean of candidate compensation expectations"],
+      ["Average Offered Salary (LPA)", (avgOffer / 100000).toFixed(2), "Mean of salaries extended during offers"]
+    ];
+
+    // Build the CSV string
+    let csvLines: string[] = [];
+    
+    csvLines.push("=== SYSTEM WORKSPACE PIPELINE METRICS ===");
+    csvLines.push(metricsHeaders.join(","));
+    metricsRows.forEach(row => {
+      csvLines.push(row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","));
+    });
+    
+    csvLines.push("");
+    csvLines.push("");
+    csvLines.push("=== CANDIDATE TRACKING DATABASE ===");
+    csvLines.push(headers.join(","));
+    candidateRows.forEach(row => {
+      csvLines.push(row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","));
+    });
+
+    const csvContent = csvLines.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `hirely_recruitment_analytics_report_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div id="analytics_metrics_dashboard" className="space-y-6">
+
+      {/* Top Header Row with Export Option */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-lg">
+        <div>
+          <h2 className="text-base font-bold font-display text-white flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-emerald-400" />
+            Recruitment & Pipeline Analytics Workspace
+          </h2>
+          <p className="text-xs text-slate-400">
+            Real-time insights, hiring velocity, budget benchmarking, and conversion bottlenecks.
+          </p>
+        </div>
+        <button
+          onClick={handleExportCSV}
+          className="self-start sm:self-center px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md"
+        >
+          <Download className="w-4 h-4 shrink-0" />
+          Export Pipeline Data (CSV)
+        </button>
+      </div>
       
       {/* Overview Stat Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

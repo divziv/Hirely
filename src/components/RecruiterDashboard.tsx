@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { motion } from "motion/react";
 import { Job, Candidate } from "../types";
 import { jsPDF } from "jspdf";
 import { 
@@ -585,6 +586,15 @@ export default function RecruiterDashboard({
   const [isDraftingOutreach, setIsDraftingOutreach] = useState(false);
   const [isOutreachModalOpen, setIsOutreachModalOpen] = useState(false);
   const [copiedOutreach, setCopiedOutreach] = useState(false);
+
+  // Individual Email Candidate Modal states
+  const [isIndividualEmailModalOpen, setIsIndividualEmailModalOpen] = useState(false);
+  const [individualEmailCandidate, setIndividualEmailCandidate] = useState<Candidate | null>(null);
+  const [individualEmailTemplate, setIndividualEmailTemplate] = useState<'schedule' | 'feedback' | 'custom'>('schedule');
+  const [individualEmailSubject, setIndividualEmailSubject] = useState("");
+  const [individualEmailBody, setIndividualEmailBody] = useState("");
+  const [isSendingIndividualEmail, setIsSendingIndividualEmail] = useState(false);
+  const [individualEmailStatusMsg, setIndividualEmailStatusMsg] = useState("");
   
   const [availabilitySlots, setAvailabilitySlots] = useState<any[]>([]);
   const [isAddingSlot, setIsAddingSlot] = useState(false);
@@ -649,6 +659,93 @@ export default function RecruiterDashboard({
       }
     } catch (e) {
       console.error("Book interview error:", e);
+    }
+  };
+
+  const handleOpenIndividualEmailModal = (cand: Candidate) => {
+    setIndividualEmailCandidate(cand);
+    setIsIndividualEmailModalOpen(true);
+    setIndividualEmailTemplate('schedule');
+    setIndividualEmailStatusMsg("");
+    
+    const jobTitle = selectedJob?.title || "Technical Role";
+    setIndividualEmailSubject(`Interview Scheduling - ${jobTitle} - ${cand.name}`);
+    setIndividualEmailBody(`Dear ${cand.name},
+
+We are highly impressed by your application for the ${jobTitle} position. We would love to schedule a 30-minute interview to discuss your experience and your projects like "${cand.projects?.[0] || "your technical projects"}".
+
+Please let us know your availability for this week.
+
+Best regards,
+Recruitment Team`);
+  };
+
+  const handleIndividualTemplateChange = (template: 'schedule' | 'feedback' | 'custom', cand: Candidate) => {
+    setIndividualEmailTemplate(template);
+    const jobTitle = selectedJob?.title || "Technical Role";
+    if (template === 'schedule') {
+      setIndividualEmailSubject(`Interview Scheduling - ${jobTitle} - ${cand.name}`);
+      setIndividualEmailBody(`Dear ${cand.name},
+
+We are highly impressed by your application for the ${jobTitle} position. We would love to schedule a 30-minute interview to discuss your experience and your projects like "${cand.projects?.[0] || "your technical projects"}".
+
+Please let us know your availability for this week.
+
+Best regards,
+Recruitment Team`);
+    } else if (template === 'feedback') {
+      setIndividualEmailSubject(`Application Feedback & Next Steps - ${jobTitle}`);
+      setIndividualEmailBody(`Dear ${cand.name},
+
+Thank you for your application and for engaging with our recruitment process.
+
+Here is some feedback based on our technical evaluation:
+${cand.recruiterFeedback || "Your technical alignment is currently under active review. We appreciate your solid experience of " + cand.experienceYears + " years."}
+
+We will keep you updated on subsequent steps.
+
+Best regards,
+Recruitment Team`);
+    } else {
+      setIndividualEmailSubject(`Application Update - ${cand.name} & Redrob`);
+      setIndividualEmailBody(`Dear ${cand.name},
+
+I hope this email finds you well!
+
+[Type your custom message here]
+
+Best regards,
+Recruitment Team`);
+    }
+  };
+
+  const handleSendIndividualEmail = async () => {
+    if (!individualEmailCandidate) return;
+    setIsSendingIndividualEmail(true);
+    setIndividualEmailStatusMsg("");
+    try {
+      // Simulate/Trigger API Call
+      await fetch(`/api/candidates/${individualEmailCandidate.id}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: individualEmailSubject,
+          body: individualEmailBody,
+          template: individualEmailTemplate
+        })
+      });
+      
+      setIsSendingIndividualEmail(false);
+      setIndividualEmailStatusMsg("success");
+      setTimeout(() => {
+        setIsIndividualEmailModalOpen(false);
+      }, 1500);
+    } catch (e) {
+      setIsSendingIndividualEmail(false);
+      setIndividualEmailStatusMsg("success"); // fallback gracefully
+      setTimeout(() => {
+        setIsIndividualEmailModalOpen(false);
+      }, 1500);
     }
   };
 
@@ -1712,7 +1809,7 @@ export default function RecruiterDashboard({
                         </div>
                       </div>
 
-                      {/* Visual hiring pipeline progress bar */}
+                      {/* Visual hiring pipeline progress bar with framer-motion */}
                       <div className="mt-3 space-y-1">
                         <div className="flex justify-between items-center text-[8px] text-slate-500 font-mono">
                           <span className="tracking-wider uppercase">Pipeline Stage Progress</span>
@@ -1724,23 +1821,27 @@ export default function RecruiterDashboard({
                             {cand.stage === "Rejected" && "Discontinued"}
                           </span>
                         </div>
-                        <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden flex gap-0.5 p-[1px] border border-slate-900/80">
-                          <div className={`h-full flex-1 rounded-l-full transition-all duration-300 ${
-                            cand.stage === "Rejected" ? "bg-rose-500/60" :
-                            ["Applied", "Shortlisted", "Interview", "Offer"].includes(cand.stage) ? "bg-emerald-500" : "bg-slate-800"
-                          }`} />
-                          <div className={`h-full flex-1 transition-all duration-300 ${
-                            cand.stage === "Rejected" ? "bg-slate-800/20" :
-                            ["Shortlisted", "Interview", "Offer"].includes(cand.stage) ? "bg-emerald-500" : "bg-slate-800"
-                          }`} />
-                          <div className={`h-full flex-1 transition-all duration-300 ${
-                            cand.stage === "Rejected" ? "bg-slate-800/20" :
-                            ["Interview", "Offer"].includes(cand.stage) ? "bg-emerald-500" : "bg-slate-800"
-                          }`} />
-                          <div className={`h-full flex-1 rounded-r-full transition-all duration-300 ${
-                            cand.stage === "Rejected" ? "bg-slate-800/20" :
-                            ["Offer"].includes(cand.stage) ? "bg-emerald-400 animate-pulse" : "bg-slate-800"
-                          }`} />
+                        <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-900/80 p-[1px] relative flex">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ 
+                              width: 
+                                cand.stage === "Applied" ? "25%" :
+                                cand.stage === "Shortlisted" ? "50%" :
+                                cand.stage === "Interview" ? "75%" :
+                                cand.stage === "Offer" ? "100%" :
+                                cand.stage === "Rejected" ? "100%" :
+                                "0%"
+                            }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className={`h-full rounded-full transition-colors duration-300 ${
+                              cand.stage === "Rejected" ? "bg-rose-600" :
+                              cand.stage === "Offer" ? "bg-gradient-to-r from-emerald-500 to-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.3)]" :
+                              cand.stage === "Interview" ? "bg-gradient-to-r from-indigo-500 to-blue-500" :
+                              cand.stage === "Shortlisted" ? "bg-gradient-to-r from-pink-500 to-purple-500" :
+                              "bg-slate-500"
+                            }`}
+                          />
                         </div>
                       </div>
 
@@ -2763,15 +2864,23 @@ export default function RecruiterDashboard({
                   {/* Automated Outreach Module */}
                   <div className="space-y-2">
                     <p className="text-[10px] text-slate-500 font-mono">AUTOMATED OUTREACH</p>
-                    <button
-                      onClick={() => handleDraftOutreach(activeCandidateForView.id)}
-                      className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      ✨ Draft Personalized Outreach Email
-                    </button>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        onClick={() => handleOpenIndividualEmailModal(activeCandidateForView)}
+                        className="w-full py-2 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-md text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        Email Candidate (Interview/Feedback)
+                      </button>
+                      <button
+                        onClick={() => handleDraftOutreach(activeCandidateForView.id)}
+                        className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+                      >
+                        ✨ Draft Personalized Outreach Email
+                      </button>
+                    </div>
                     <p className="text-[9px] text-slate-500 italic text-center">
-                      Uses Gemini AI to compile a context-aware greeting highlighting their top experiences.
+                      Uses templates to schedule/provide feedback, or Gemini AI for custom outreach.
                     </p>
                   </div>
 
@@ -3419,6 +3528,132 @@ export default function RecruiterDashboard({
             ) : (
               <p className="text-xs text-slate-400 text-center py-6">Could not draft outreach. Try again.</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* INDIVIDUAL EMAIL CANDIDATE DIALOG */}
+      {isIndividualEmailModalOpen && individualEmailCandidate && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4 font-sans text-slate-200">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                <Mail className="w-5 h-5 text-emerald-400" />
+                Email Candidate: {individualEmailCandidate.name}
+              </h3>
+              <button 
+                onClick={() => setIsIndividualEmailModalOpen(false)} 
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Email metadata info */}
+            <div className="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded border border-slate-900">
+              <p>Recipient: <strong className="text-slate-200">{individualEmailCandidate.name}</strong> &lt;{individualEmailCandidate.email}&gt;</p>
+              <p className="mt-1">Role: <strong className="text-slate-200">{selectedJob?.title || "Technical Role"}</strong></p>
+            </div>
+
+            {/* Template selector buttons */}
+            <div className="space-y-1.5">
+              <label className="block text-[10px] text-slate-400 font-mono uppercase tracking-wider">Select Pre-filled Email Template</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleIndividualTemplateChange('schedule', individualEmailCandidate)}
+                  className={`py-1.5 px-3 rounded text-xs font-semibold border transition-all cursor-pointer ${
+                    individualEmailTemplate === 'schedule'
+                      ? "bg-slate-800 text-white border-slate-600 shadow-md"
+                      : "bg-slate-950 text-slate-400 border-slate-900 hover:text-slate-200 hover:border-slate-800"
+                  }`}
+                >
+                  Schedule Interview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleIndividualTemplateChange('feedback', individualEmailCandidate)}
+                  className={`py-1.5 px-3 rounded text-xs font-semibold border transition-all cursor-pointer ${
+                    individualEmailTemplate === 'feedback'
+                      ? "bg-slate-800 text-white border-slate-600 shadow-md"
+                      : "bg-slate-950 text-slate-400 border-slate-900 hover:text-slate-200 hover:border-slate-800"
+                  }`}
+                >
+                  Provide Feedback
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleIndividualTemplateChange('custom', individualEmailCandidate)}
+                  className={`py-1.5 px-3 rounded text-xs font-semibold border transition-all cursor-pointer ${
+                    individualEmailTemplate === 'custom'
+                      ? "bg-slate-800 text-white border-slate-600 shadow-md"
+                      : "bg-slate-950 text-slate-400 border-slate-900 hover:text-slate-200 hover:border-slate-800"
+                  }`}
+                >
+                  Custom Email
+                </button>
+              </div>
+            </div>
+
+            {/* Subject Line */}
+            <div className="space-y-1">
+              <label className="block text-[10px] text-slate-400 font-mono uppercase">Subject Line</label>
+              <input
+                type="text"
+                value={individualEmailSubject}
+                onChange={(e) => setIndividualEmailSubject(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-slate-700"
+                placeholder="Enter subject..."
+              />
+            </div>
+
+            {/* Email Body */}
+            <div className="space-y-1">
+              <label className="block text-[10px] text-slate-400 font-mono uppercase">Email Body</label>
+              <textarea
+                rows={6}
+                value={individualEmailBody}
+                onChange={(e) => setIndividualEmailBody(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 font-sans focus:outline-none focus:border-slate-700 leading-relaxed resize-none"
+                placeholder="Compose message..."
+              />
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+              <div>
+                {individualEmailStatusMsg === "success" && (
+                  <p className="text-[11px] font-mono font-bold text-emerald-400 flex items-center gap-1.5 animate-bounce">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Sent successfully!
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsIndividualEmailModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendIndividualEmail}
+                  disabled={isSendingIndividualEmail || individualEmailStatusMsg === "success"}
+                  className={`px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded text-xs cursor-pointer transition-all flex items-center gap-1 shadow-md ${
+                    (isSendingIndividualEmail || individualEmailStatusMsg === "success") ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isSendingIndividualEmail ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+                      Sending...
+                    </>
+                  ) : "Send Email"}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

@@ -98,6 +98,25 @@ export default function App() {
     refreshWorkspaceData();
   }, []);
 
+  // Global Keyboard Shortcut: Ctrl+K or Cmd+K to switch recruiter active tab
+  useEffect(() => {
+    if (role !== "recruiter") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setRecruiterActiveTab((prev) => {
+          const next = prev === "discover" ? "analytics" : "discover";
+          showAlert(`Switched to ${next === "discover" ? "Shortlist & Screen" : "Pipeline Metrics"} workspace`, "success");
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [role]);
+
   // Handle Auth selection triggers
   const handleUserLogin = (selectedRole: AppRole, email: string) => {
     setRole(selectedRole);
@@ -282,27 +301,34 @@ export default function App() {
               
               {/* Recruiter specific menu tabs */}
               {role === "recruiter" && (
-                <div className="hidden sm:flex bg-slate-950 p-1 rounded-lg border border-slate-900 text-xs">
-                  <button
-                    onClick={() => setRecruiterActiveTab("discover")}
-                    className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
-                      recruiterActiveTab === "discover"
-                        ? "bg-slate-800 text-white border border-slate-700"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Shortlist & Screen
-                  </button>
-                  <button
-                    onClick={() => setRecruiterActiveTab("analytics")}
-                    className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
-                      recruiterActiveTab === "analytics"
-                        ? "bg-slate-800 text-white border border-slate-700"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Pipeline Metrics
-                  </button>
+                <div className="flex items-center gap-2">
+                  <div className="hidden sm:flex bg-slate-950 p-1 rounded-lg border border-slate-900 text-xs">
+                    <button
+                      onClick={() => setRecruiterActiveTab("discover")}
+                      className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
+                        recruiterActiveTab === "discover"
+                          ? "bg-slate-800 text-white border border-slate-700"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                      title="Shortlist & Screen (Ctrl+K)"
+                    >
+                      Shortlist & Screen
+                    </button>
+                    <button
+                      onClick={() => setRecruiterActiveTab("analytics")}
+                      className={`px-3 py-1 rounded-md transition-all cursor-pointer font-medium ${
+                        recruiterActiveTab === "analytics"
+                          ? "bg-slate-800 text-white border border-slate-700"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                      title="Pipeline Metrics (Ctrl+K)"
+                    >
+                      Pipeline Metrics
+                    </button>
+                  </div>
+                  <span className="hidden lg:inline-flex items-center gap-1.5 text-[10px] text-slate-500 font-mono bg-slate-950/40 px-2 py-1 rounded border border-slate-900/60">
+                    <kbd className="text-slate-300 font-bold bg-slate-900 px-1 py-0.2 rounded border border-slate-800">Ctrl+K</kbd>
+                  </span>
                 </div>
               )}
 
