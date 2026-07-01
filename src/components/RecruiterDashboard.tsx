@@ -579,7 +579,7 @@ export default function RecruiterDashboard({
 
   // Custom Recruit AI enhancements states
   const [isBlindMode, setIsBlindMode] = useState(false);
-  const [recruiterViewMode, setRecruiterViewMode] = useState<"active" | "passive">("active");
+  const [recruiterViewMode, setRecruiterViewMode] = useState<"active" | "kanban" | "passive">("active");
   const [recruiterTab, setRecruiterTab] = useState<'pipeline' | 'calendar'>('pipeline');
   const [selectedCalendarCandidateId, setSelectedCalendarCandidateId] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<number>(6); // Default June 2026
@@ -591,6 +591,15 @@ export default function RecruiterDashboard({
   const [isDraftingOutreach, setIsDraftingOutreach] = useState(false);
   const [isOutreachModalOpen, setIsOutreachModalOpen] = useState(false);
   const [copiedOutreach, setCopiedOutreach] = useState(false);
+
+  // AI-Powered Interview Agenda states
+  const [interviewAgenda, setInterviewAgenda] = useState<{
+    agendaItems: Array<{ phase: string; durationMinutes: number; description: string }>;
+    behavioralQuestions: Array<{ question: string; focusArea: string; targetResponse: string }>;
+    technicalQuestions: Array<{ question: string; topic: string; targetResponse: string }>;
+  } | null>(null);
+  const [isGeneratingAgenda, setIsGeneratingAgenda] = useState(false);
+  const [isAgendaModalOpen, setIsAgendaModalOpen] = useState(false);
 
   // Individual Email Candidate Modal states
   const [isIndividualEmailModalOpen, setIsIndividualEmailModalOpen] = useState(false);
@@ -824,6 +833,58 @@ Recruitment Team`);
       console.error("Outreach drafting error:", e);
     } finally {
       setIsDraftingOutreach(false);
+    }
+  };
+
+  // Generate customized interview agenda with Gemini
+  const handleGenerateInterviewAgenda = async (candidateId: string) => {
+    setInterviewAgenda(null);
+    setIsAgendaModalOpen(true);
+    setIsGeneratingAgenda(true);
+    try {
+      const res = await fetch(`/api/candidates/${candidateId}/generate-agenda`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInterviewAgenda(data);
+      }
+    } catch (e) {
+      console.error("Interview agenda generation error:", e);
+    } finally {
+      setIsGeneratingAgenda(false);
+    }
+  };
+
+  // Save the generated agenda directly to the Candidate Notes so it persists
+  const handleSaveAgendaToNotes = async (cand: Candidate) => {
+    if (!interviewAgenda) return;
+    try {
+      const agendaStr = `=== AI-GENERATED INTERVIEW AGENDA ===\n` +
+        `PHASES:\n` +
+        interviewAgenda.agendaItems.map(item => `- ${item.phase} (${item.durationMinutes} mins): ${item.description}`).join("\n") +
+        `\n\nBEHAVIORAL QUESTIONS:\n` +
+        interviewAgenda.behavioralQuestions.map((q, idx) => `${idx + 1}. [${q.focusArea}] ${q.question}\n   Target Answer Indicator: ${q.targetResponse}`).join("\n") +
+        `\n\nTECHNICAL QUESTIONS:\n` +
+        interviewAgenda.technicalQuestions.map((q, idx) => `${idx + 1}. [${q.topic}] ${q.question}\n   Target Answer Indicator: ${q.targetResponse}`).join("\n");
+
+      // Save to Notes
+      await onSaveCandidateNotes(
+        cand.id, 
+        (cand.recruiterNotes ? cand.recruiterNotes + "\n\n" : "") + agendaStr, 
+        cand.recruiterFeedback || "",
+        {
+          ownership: cand.behavioralSignals?.ownership || 4,
+          leadership: cand.behavioralSignals?.leadership || 4,
+          collaboration: cand.behavioralSignals?.collaboration || 4
+        }
+      );
+      
+      alert("Custom Interview Agenda saved successfully to Private Notes!");
+      onRefreshData();
+    } catch (err) {
+      console.error("Failed to append agenda to notes:", err);
     }
   };
 
@@ -2406,6 +2467,120 @@ Recruitment Team`);
                   </div>
                 </div>
 
+                {/* 5. SKILLS RADAR CHART COMPARISON */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-900 pb-2">
+                    <div className="flex items-center gap-1.5">
+                      <GitCompare className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">
+                        Skill Proficiency vs. Role Requirements
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      TARGET BASELINE VS CANDIDATE PROFILES
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                    {/* Radar Chart Visual */}
+                    <div className="lg:col-span-2 h-[260px] w-full flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={(() => {
+                          const requiredSkills = selectedJob?.mustHaveSkills || [];
+                          // Combine and grab up to 6 key skills
+                          const radarSkills = [...requiredSkills];
+                          if (radarSkills.length < 3) {
+                            const candidatesSkills = Array.from(new Set([...candA.skills, ...candB.skills]));
+                            candidatesSkills.forEach(s => {
+                              if (!radarSkills.includes(s)) radarSkills.push(s);
+                            });
+                          }
+                          return radarSkills.slice(0, 6).map(skillName => {
+                            const getSkillScore = (cand: Candidate) => {
+                              if (cand.skillProgress?.[skillName] === 'Expert') return 5;
+                              if (cand.skillProgress?.[skillName] === 'Intermediate') return 3.5;
+                              if (cand.skills.some(s => s.toLowerCase().trim() === skillName.toLowerCase().trim())) return 2.5;
+                              return 1;
+                            };
+                            return {
+                              subject: skillName,
+                              candA: getSkillScore(candA),
+                              candB: getSkillScore(candB),
+                              baseline: 4
+                            };
+                          });
+                        })()}>
+                          <PolarGrid stroke="#334155" />
+                          <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 9 }} />
+                          <PolarRadiusAxis angle={30} domain={[0, 5]} tick={{ fill: '#475569' }} />
+                          <Radar
+                            name={isBlindMode ? "Candidate A" : candA.name}
+                            dataKey="candA"
+                            stroke="#3b82f6"
+                            fill="#3b82f6"
+                            fillOpacity={0.15}
+                          />
+                          <Radar
+                            name={isBlindMode ? "Candidate B" : candB.name}
+                            dataKey="candB"
+                            stroke="#a855f7"
+                            fill="#a855f7"
+                            fillOpacity={0.15}
+                          />
+                          <Radar
+                            name="Required Baseline"
+                            dataKey="baseline"
+                            stroke="#10b981"
+                            strokeDasharray="4 4"
+                            fill="none"
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Radar Chart Legend & Insight Explainer */}
+                    <div className="space-y-4">
+                      <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-900 space-y-2.5">
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Profiles Mapping</span>
+                        
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                              <span className="text-slate-300 font-medium">
+                                {isBlindMode ? "Candidate A" : candA.name}
+                              </span>
+                            </div>
+                            <span className="text-blue-400 font-mono font-bold">{candA.rankingMetrics?.skillMatchScore || 0}% Skill Match</span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                              <span className="text-slate-300 font-medium">
+                                {isBlindMode ? "Candidate B" : candB.name}
+                              </span>
+                            </div>
+                            <span className="text-purple-400 font-mono font-bold">{candB.rankingMetrics?.skillMatchScore || 0}% Skill Match</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-900">
+                            <span className="w-4 h-0.5 border-t border-dashed border-emerald-400"></span>
+                            <span className="text-emerald-400 font-mono text-[10px]">Target Baseline (Expert Level)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-900/20 p-3 rounded-lg border border-slate-900/50">
+                        <span className="text-[10px] font-mono font-semibold text-slate-400 block uppercase mb-1">Fit Interpretation</span>
+                        <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
+                          Plot maps verified skill progression of candidates from interview assessments and resumes. Traces that reach or exceed the green dashed baseline indicate full readiness for that technology.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 6. TEAM STRUCTURED EVALUATION COMPARISON */}
                 <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
                   <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
@@ -2737,7 +2912,7 @@ Recruitment Team`);
           {/* MIDDLE COLUMN: Candidate ranked list and Compare mode */}
           <div className="lg:col-span-5 space-y-4">
         
-        {/* Toggle between Active Applicants and Passive Talent Sourcing */}
+        {/* Toggle between Active Applicants, Kanban Board, and Passive Talent Sourcing */}
         <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
           <button
             onClick={() => setRecruiterViewMode("active")}
@@ -2748,6 +2923,16 @@ Recruitment Team`);
             }`}
           >
             Active Applicants ({filteredCandidates.length})
+          </button>
+          <button
+            onClick={() => setRecruiterViewMode("kanban")}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+              recruiterViewMode === "kanban"
+                ? "bg-slate-800 text-white shadow"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Kanban Board
           </button>
           <button
             onClick={() => setRecruiterViewMode("passive")}
@@ -2762,7 +2947,126 @@ Recruitment Team`);
           </button>
         </div>
 
-        {recruiterViewMode === "active" ? (
+        {recruiterViewMode === "kanban" ? (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl space-y-4">
+            <div>
+              <h1 className="text-sm font-semibold tracking-tight text-white font-display">
+                Interactive Hiring Pipeline Kanban
+              </h1>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Drag and drop candidate cards across columns or click on them to view assessment details.
+              </p>
+            </div>
+
+            <div className="flex flex-row gap-3 overflow-x-auto pb-4 scrollbar-thin">
+              {(["Applied", "Shortlisted", "Interview", "Offer", "Rejected"] as const).map((stageName) => {
+                const stageCandidates = filteredCandidates.filter(c => c.stage === stageName);
+                
+                let columnBorder = "border-slate-800 bg-slate-950/20";
+                let badgeColor = "bg-slate-800 text-slate-300";
+                
+                if (stageName === "Shortlisted") {
+                  columnBorder = "border-blue-900/30 bg-blue-950/5";
+                  badgeColor = "bg-blue-500/10 text-blue-400";
+                } else if (stageName === "Interview") {
+                  columnBorder = "border-amber-900/30 bg-amber-950/5";
+                  badgeColor = "bg-amber-500/10 text-amber-400";
+                } else if (stageName === "Offer") {
+                  columnBorder = "border-emerald-900/30 bg-emerald-950/5";
+                  badgeColor = "bg-emerald-500/10 text-emerald-400";
+                } else if (stageName === "Rejected") {
+                  columnBorder = "border-rose-900/30 bg-rose-950/5";
+                  badgeColor = "bg-rose-500/10 text-rose-400";
+                }
+
+                return (
+                  <div
+                    key={stageName}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      const candId = e.dataTransfer.getData("text/plain");
+                      if (candId) {
+                        await handleStageChange(candId, stageName);
+                      }
+                    }}
+                    className={`flex flex-col border rounded-xl p-3 space-y-3 min-w-[220px] max-w-[240px] flex-1 min-h-[460px] transition-all duration-200 hover:border-slate-700 bg-slate-950/40`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-slate-900 pb-2">
+                      <span className="text-[10px] font-bold tracking-wider uppercase font-mono text-slate-300">{stageName}</span>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ${badgeColor}`}>
+                        {stageCandidates.length}
+                      </span>
+                    </div>
+
+                    {/* Draggable Candidates List */}
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[450px] scrollbar-thin">
+                      {stageCandidates.map((cand) => {
+                        const isInspected = activeCandidateForView?.id === cand.id;
+                        return (
+                          <div
+                            key={cand.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", cand.id);
+                            }}
+                            onClick={() => setActiveCandidateForView(cand)}
+                            className={`p-3 rounded-lg border transition-all duration-200 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 group relative ${
+                              isInspected
+                                ? "bg-slate-800 border-blue-500 shadow-md shadow-blue-500/5"
+                                : cand.isPriority
+                                ? "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40"
+                                : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="space-y-1.5">
+                              <div className="flex items-start justify-between gap-1">
+                                <span className="text-[11px] font-bold text-white group-hover:text-blue-400 transition-colors line-clamp-1 leading-tight">
+                                  {isBlindMode ? `Candidate #${cand.id.slice(-4)}` : cand.name}
+                                </span>
+                                {cand.isPriority && (
+                                  <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+                                )}
+                              </div>
+
+                              <p className="text-[9px] text-slate-500 font-mono">
+                                {cand.experienceYears} Yrs Exp &middot; {cand.skills[0] || "Generalist"}
+                              </p>
+
+                              <div className="flex justify-between items-center pt-1 border-t border-slate-950">
+                                <span className="text-[9px] font-mono text-slate-500">
+                                  Match Score:
+                                </span>
+                                <span className={`text-[9px] font-mono font-bold px-1 rounded ${
+                                  (cand.rankingMetrics?.finalScore || 50) >= 80 
+                                    ? "text-emerald-400 bg-emerald-500/10" 
+                                    : (cand.rankingMetrics?.finalScore || 50) >= 60 
+                                    ? "text-blue-400 bg-blue-500/10" 
+                                    : "text-slate-400 bg-slate-500/10"
+                                }`}>
+                                  {cand.rankingMetrics?.finalScore || 50}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {stageCandidates.length === 0 && (
+                        <div className="h-24 border border-dashed border-slate-900 rounded-lg flex items-center justify-center text-[10px] text-slate-600 italic font-mono">
+                          Drag profile here
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : recruiterViewMode === "active" ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -4108,6 +4412,21 @@ Recruitment Team`);
                     </p>
                   </div>
 
+                  {/* AI Interview Preparation Section */}
+                  <div className="space-y-2 pt-2.5 border-t border-slate-900">
+                    <p className="text-[10px] text-slate-500 font-mono">AI INTERVIEW PREPARATION</p>
+                    <button
+                      onClick={() => handleGenerateInterviewAgenda(activeCandidateForView.id)}
+                      className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Generate AI Interview Agenda &amp; Questions
+                    </button>
+                    <p className="text-[9px] text-slate-500 italic text-center">
+                      Uses Gemini to synthesize resume and job requirements into expert interview questions.
+                    </p>
+                  </div>
+
                   {/* Interview Scheduler component */}
                   <div className="space-y-3 pt-2.5 border-t border-slate-900">
                     <div className="flex items-center justify-between">
@@ -4751,6 +5070,149 @@ Recruitment Team`);
               </div>
             ) : (
               <p className="text-xs text-slate-400 text-center py-6">Could not draft outreach. Try again.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AI INTERVIEW AGENDA MODAL */}
+      {isAgendaModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-400 animate-pulse" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100 font-display">
+                    AI-Generated Interview Agenda &amp; Questions
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    Structured with Gemini-3.5-Flash using Role JD and Candidate Resume
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAgendaModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {isGeneratingAgenda ? (
+              <div className="py-16 flex flex-col items-center justify-center gap-3">
+                <span className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+                <p className="text-xs text-slate-400 font-mono animate-pulse">
+                  Synthesizing resume and job description to curate the optimal interview agenda...
+                </p>
+              </div>
+            ) : interviewAgenda ? (
+              <div className="space-y-6">
+                
+                {/* 1. Interview Agenda Timeline */}
+                <div className="space-y-3">
+                  <span className="text-[10px] font-bold text-blue-400 font-mono uppercase tracking-wider block">1. Recommended Interview Agenda Phases</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {interviewAgenda.agendaItems.map((item, idx) => (
+                      <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-850 space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-slate-300 font-mono">Phase {idx + 1}</span>
+                          <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1.5 py-0.2 rounded font-mono font-semibold">
+                            {item.durationMinutes} mins
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-semibold text-white">{item.phase}</h4>
+                        <p className="text-[11px] text-slate-400 leading-normal">{item.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Structured Behavioral Questions */}
+                <div className="space-y-3">
+                  <span className="text-[10px] font-bold text-purple-400 font-mono uppercase tracking-wider block">2. Candidate-Specific Behavioral Questions</span>
+                  <div className="space-y-3">
+                    {interviewAgenda.behavioralQuestions.map((q, idx) => (
+                      <div key={idx} className="bg-slate-950/60 p-3 rounded-lg border border-slate-850 space-y-2">
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="text-slate-500">BEHAVIORAL QUESTION {idx + 1}</span>
+                          <span className="bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded uppercase font-bold">
+                            {q.focusArea}
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-white leading-relaxed">
+                          "{q.question}"
+                        </p>
+                        <div className="bg-slate-900/40 p-2.5 rounded border border-slate-900 text-[11px] text-slate-400">
+                          <strong className="text-purple-400 font-mono uppercase text-[9px] tracking-wide block mb-0.5">Expected Target Response</strong>
+                          {q.targetResponse}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Structured Technical Questions */}
+                <div className="space-y-3">
+                  <span className="text-[10px] font-bold text-emerald-400 font-mono uppercase tracking-wider block">3. Role-Targeted Technical Assessments</span>
+                  <div className="space-y-3">
+                    {interviewAgenda.technicalQuestions.map((q, idx) => (
+                      <div key={idx} className="bg-slate-950/60 p-3 rounded-lg border border-slate-850 space-y-2">
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="text-slate-500">TECHNICAL QUESTION {idx + 1}</span>
+                          <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded uppercase font-bold">
+                            {q.topic}
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-white leading-relaxed">
+                          "{q.question}"
+                        </p>
+                        <div className="bg-slate-900/40 p-2.5 rounded border border-slate-900 text-[11px] text-slate-400">
+                          <strong className="text-emerald-400 font-mono uppercase text-[9px] tracking-wide block mb-0.5">Expected Technical Signal / Solution</strong>
+                          {q.targetResponse}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                  <button
+                    onClick={() => handleSaveAgendaToNotes(activeCandidateForView)}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-xs transition-colors cursor-pointer"
+                  >
+                    💾 Save to Private Notes
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsAgendaModalOpen(false)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded text-xs cursor-pointer transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        const str = `AI INTERVIEW AGENDA FOR ${activeCandidateForView.name}\n\n` +
+                          `PHASES:\n` +
+                          interviewAgenda.agendaItems.map(item => `- ${item.phase} (${item.durationMinutes} mins): ${item.description}`).join("\n") +
+                          `\n\nBEHAVIORAL QUESTIONS:\n` +
+                          interviewAgenda.behavioralQuestions.map((q, idx) => `${idx + 1}. [${q.focusArea}] ${q.question}\n   Target: ${q.targetResponse}`).join("\n") +
+                          `\n\nTECHNICAL QUESTIONS:\n` +
+                          interviewAgenda.technicalQuestions.map((q, idx) => `${idx + 1}. [${q.topic}] ${q.question}\n   Target: ${q.targetResponse}`).join("\n");
+                        navigator.clipboard.writeText(str);
+                        alert("Agenda copied to clipboard!");
+                      }}
+                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs cursor-pointer transition-colors"
+                    >
+                      📋 Copy Agenda Text
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-6">Could not generate interview agenda. Try again.</p>
             )}
           </div>
         </div>

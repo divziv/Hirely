@@ -1725,6 +1725,113 @@ app.post("/api/candidates/match-rationale", async (req, res) => {
   }
 });
 
+// POST generate AI-powered Interview Agenda
+app.post("/api/candidates/:id/generate-agenda", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const candidate = CANDIDATES_DB.find(c => c.id === id);
+    if (!candidate) {
+      return res.status(404).json({ error: "Candidate not found" });
+    }
+    const job = JOBS_DB.find(j => j.id === candidate.jobId) || JOBS_DB[0];
+
+    if (ai) {
+      console.log(`System Status: AI generating Interview Agenda for ${candidate.name} and ${job.title}...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Create a comprehensive, highly customized and structured Interview Agenda for candidate "${candidate.name}" interviewing for the role "${job.title}" at "${job.company}".
+The agenda must include:
+1. A structured timeline / list of interview agenda phases (e.g. Introduction, Technical Deep Dive, System Design Scenario, Behavioral Q&A, and Wrap-up).
+2. Highly tailored behavioral questions that dive into their background (leveraging their specific projects, skills, and behavioral signals).
+3. Highly tailored technical questions probing their knowledge of the core required stack (${job.mustHaveSkills.join(", ")}) in relation to their previous work.
+
+Here is the candidate background:
+- Resume/Experience Text: ${candidate.resumeText || "No detailed CV text"}
+- Skills List: ${candidate.skills.join(", ")}
+- Experience Years: ${candidate.experienceYears}
+- Leadership/Ownership/Collaboration metrics: Leadership=${candidate.behavioralSignals?.leadership || 4}/5, Ownership=${candidate.behavioralSignals?.ownership || 4}/5, Collaboration=${candidate.behavioralSignals?.collaboration || 4}/5
+
+Here is the job requirement:
+- Job Title: ${job.title}
+- Job Description: ${job.description}
+- Job Required Skills: ${job.mustHaveSkills.join(", ")}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              agendaItems: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    phase: { type: Type.STRING },
+                    durationMinutes: { type: Type.INTEGER },
+                    description: { type: Type.STRING }
+                  },
+                  required: ["phase", "durationMinutes", "description"]
+                }
+              },
+              behavioralQuestions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    question: { type: Type.STRING },
+                    focusArea: { type: Type.STRING },
+                    targetResponse: { type: Type.STRING }
+                  },
+                  required: ["question", "focusArea", "targetResponse"]
+                }
+              },
+              technicalQuestions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    question: { type: Type.STRING },
+                    topic: { type: Type.STRING },
+                    targetResponse: { type: Type.STRING }
+                  },
+                  required: ["question", "topic", "targetResponse"]
+                }
+              }
+            },
+            required: ["agendaItems", "behavioralQuestions", "technicalQuestions"]
+          }
+        }
+      });
+
+      const text = response.text;
+      if (text) {
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      }
+    }
+
+    // Fallback if AI not initialized or fails
+    res.json({
+      agendaItems: [
+        { phase: "Welcome & Brief Intro", durationMinutes: 10, description: `Warm up, outline the schedule for the ${job.title} interview, and allow ${candidate.name} to introduce themselves.` },
+        { phase: "Technical Deep Dive", durationMinutes: 20, description: `Review candidate's prior work in ${candidate.skills.slice(0, 3).join(", ") || "software engineering"} and verify architectural decisions.` },
+        { phase: "Problem Solving & System Design", durationMinutes: 20, description: `Hands-on design challenge aligning with job requirements like scalability and system reliability.` },
+        { phase: "Behavioral & Leadership Alignment", durationMinutes: 10, description: `Explore soft skills, feedback reception, team chemistry, and alignment with Redrob culture.` }
+      ],
+      behavioralQuestions: [
+        { question: `Can you describe a situation where you had to show a high degree of ownership on a complex project?`, focusArea: "Ownership", targetResponse: "Specific examples detailing personal initiative, identifying bottlenecks, and successfully resolving them under pressure." },
+        { question: `Tell me about a time you had a difference of opinion with another engineer or product manager. How did you collaborate to reach a resolution?`, focusArea: "Collaboration", targetResponse: "Empathy, active listening, evidence-based reasoning, and constructive compromise to align with broader business goals." }
+      ],
+      technicalQuestions: [
+        { question: `How would you design a robust, low-latency API integration utilizing ${job.mustHaveSkills[0] || "core web services"} to handle high-concurrency requests?`, topic: job.mustHaveSkills[0] || "Core Backend Development", targetResponse: "Asynchronous handlers, proper connection pooling, horizontal scaling patterns, caching strategies, and defensive rate-limiting." },
+        { question: `With your experience in ${candidate.skills[0] || "programming languages"}, what are the memory management or performance trade-offs you typically optimize for?`, topic: candidate.skills[0] || "Advanced Programming", targetResponse: "Garbage collection behavior, async event loop microtasks vs macrotasks, and memory leak identification procedures." }
+      ]
+    });
+  } catch (error: any) {
+    console.error("Error in generate-agenda:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ---------------------------------------------------------
 // VITE DEV SERVER AND PRODUCTION SERVING CONFIG
 // ---------------------------------------------------------
