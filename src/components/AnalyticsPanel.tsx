@@ -17,7 +17,10 @@ import {
   Tooltip, 
   Cell,
   Legend,
-  CartesianGrid
+  CartesianGrid,
+  FunnelChart,
+  Funnel,
+  LabelList
 } from "recharts";
 
 interface AnalyticsPanelProps {
@@ -100,10 +103,10 @@ export default function AnalyticsPanel({ jobs, candidates }: AnalyticsPanelProps
   const offerCount = candidates.filter(c => c.stage === "Offer").length;
 
   const funnelData = [
-    { name: "Applied", count: appliedCount, percent: 100, color: "#64748b" },       // slate-500
-    { name: "Shortlisted", count: shortlistedCount, percent: appliedCount > 0 ? Math.round((shortlistedCount / appliedCount) * 100) : 0, color: "#a855f7" }, // purple-500
-    { name: "Interview", count: interviewCount, percent: shortlistedCount > 0 ? Math.round((interviewCount / shortlistedCount) * 100) : 0, color: "#60a5fa" },     // blue-400
-    { name: "Offer", count: offerCount, percent: interviewCount > 0 ? Math.round((offerCount / interviewCount) * 100) : 0, color: "#34d399" }             // emerald-400
+    { name: "Applied", value: appliedCount, count: appliedCount, percent: 100, dropOff: 0, color: "#64748b" },       // slate-500
+    { name: "Shortlisted", value: shortlistedCount, count: shortlistedCount, percent: appliedCount > 0 ? Math.round((shortlistedCount / appliedCount) * 100) : 0, dropOff: appliedCount > 0 ? 100 - Math.round((shortlistedCount / appliedCount) * 100) : 0, color: "#a855f7" }, // purple-500
+    { name: "Interview", value: interviewCount, count: interviewCount, percent: shortlistedCount > 0 ? Math.round((interviewCount / shortlistedCount) * 100) : 0, dropOff: shortlistedCount > 0 ? 100 - Math.round((interviewCount / shortlistedCount) * 100) : 0, color: "#60a5fa" },     // blue-400
+    { name: "Offer", value: offerCount, count: offerCount, percent: interviewCount > 0 ? Math.round((offerCount / interviewCount) * 100) : 0, dropOff: interviewCount > 0 ? 100 - Math.round((offerCount / interviewCount) * 100) : 0, color: "#34d399" }             // emerald-400
   ];
 
   // Pipeline conversion calculations for bottleneck diagnostics
@@ -405,51 +408,67 @@ export default function AnalyticsPanel({ jobs, candidates }: AnalyticsPanelProps
         </div>
 
         {/* Recharts Funnel visualization */}
-        <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-900/80">
-          <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono uppercase mb-3">
-            <span>Visual Funnel Volume</span>
+        <div className="bg-slate-950/50 rounded-lg p-5 border border-slate-900/80">
+          <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono uppercase mb-4">
+            <span>Visual Funnel Volume & Drop-off Rates</span>
             <span>Total Candidates: {totalCandidates}</span>
           </div>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                layout="vertical"
-                data={funnelData}
-                margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
-              >
-                <XAxis type="number" hide />
-                <YAxis 
-                  type="category" 
-                  dataKey="name" 
-                  stroke="#94a3b8" 
-                  fontSize={10} 
-                  tickLine={false} 
-                  axisLine={false}
-                  width={80}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(255, 255, 255, 0.02)" }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg text-[11px] font-mono shadow-2xl space-y-1">
-                          <p className="text-white font-bold">{data.name} Stage</p>
-                          <p className="text-slate-400">Active Candidates: <span className="text-white font-bold">{data.count}</span></p>
-                          <p className="text-slate-400">Conversion from prev: <span className="text-emerald-400 font-bold">{data.percent}%</span></p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
-                  {funnelData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+            {/* The Funnel Chart */}
+            <div className="md:col-span-8 h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <FunnelChart>
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg text-xs font-mono shadow-2xl space-y-1">
+                            <p className="text-white font-bold text-sm" style={{ color: data.color }}>{data.name} Stage</p>
+                            <p className="text-slate-300">Candidates: <span className="text-white font-bold">{data.count}</span></p>
+                            <p className="text-slate-300">Conversion from Sourced: <span className="text-emerald-400 font-bold">{data.percent}%</span></p>
+                            <p className="text-slate-300">Cumulative Drop-off: <span className="text-rose-400 font-bold">{data.dropOff}%</span></p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Funnel
+                    dataKey="count"
+                    data={funnelData}
+                    isAnimationActive
+                  >
+                    <LabelList position="right" fill="#fff" dataKey="name" stroke="none" style={{ fontSize: '11px', fontWeight: 'bold' }} />
+                    {funnelData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Funnel>
+                </FunnelChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Drop-off rate analytics cards */}
+            <div className="md:col-span-4 space-y-3 font-sans">
+              <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider block">Stage Leakage / Drop-off</span>
+              {funnelData.map((stage, idx) => {
+                if (idx === 0) return null; // Applied doesn't drop off yet
+                const prevStage = funnelData[idx - 1];
+                const stageDropOff = prevStage.count > 0 ? Math.round(((prevStage.count - stage.count) / prevStage.count) * 100) : 0;
+                return (
+                  <div key={stage.name} className="p-2.5 bg-slate-900/60 border border-slate-950 rounded-lg flex items-center justify-between text-xs">
+                    <div className="space-y-0.5">
+                      <span className="font-semibold text-slate-200">{prevStage.name} → {stage.name}</span>
+                      <span className="text-[10px] text-slate-500 block">Immediate step drop-off</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-rose-400">{stageDropOff}%</span>
+                      <span className="text-[10px] text-slate-500 block">lost</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

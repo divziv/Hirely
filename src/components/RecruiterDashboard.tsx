@@ -578,6 +578,9 @@ export default function RecruiterDashboard({
   // Custom Recruit AI enhancements states
   const [isBlindMode, setIsBlindMode] = useState(false);
   const [recruiterViewMode, setRecruiterViewMode] = useState<"active" | "passive">("active");
+  const [recruiterTab, setRecruiterTab] = useState<'pipeline' | 'calendar'>('pipeline');
+  const [selectedCalendarCandidateId, setSelectedCalendarCandidateId] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState<number>(6); // Default June 2026
   const [passiveQuery, setPassiveQuery] = useState("");
   const [passiveTalents, setPassiveTalents] = useState<any[] | null>(null);
   const [isSourcingPassive, setIsSourcingPassive] = useState(false);
@@ -617,6 +620,57 @@ export default function RecruiterDashboard({
   useEffect(() => {
     fetchAvailability();
   }, []);
+
+  // Helper to generate days for the calendar grid
+  const getCalendarDays = (month: number) => {
+    const daysInMonth = month === 6 ? 30 : 31;
+    const startDayOfWeek = month === 6 ? 1 : 3; // Sunday starts at index 0, June starts Monday (1), July starts Wednesday (3)
+    const days: Array<{ day: number; isCurrentMonth: boolean; dateString: string }> = [];
+    
+    const prevMonthDays = month === 6 ? 31 : 30; // May has 31, June has 30
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const prevDay = prevMonthDays - i;
+      const prevMonth = month === 6 ? 5 : 6;
+      days.push({
+        day: prevDay,
+        isCurrentMonth: false,
+        dateString: `2026-0${prevMonth}-${prevDay < 10 ? '0' + prevDay : prevDay}`
+      });
+    }
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      days.push({
+        day: d,
+        isCurrentMonth: true,
+        dateString: `2026-0${month}-${d < 10 ? '0' + d : d}`
+      });
+    }
+    
+    const remaining = 42 - days.length;
+    for (let n = 1; n <= remaining; n++) {
+      const nextMonth = month === 6 ? 7 : 8;
+      days.push({
+        day: n,
+        isCurrentMonth: false,
+        dateString: `2026-0${nextMonth}-${n < 10 ? '0' + n : n}`
+      });
+    }
+    
+    return days;
+  };
+
+  const getInterviewsForDate = (dateStr: string) => {
+    return candidates.filter(c => {
+      if (selectedJob && c.jobId !== selectedJob.id) return false;
+      if (searchQuery) {
+        const matchesQuery = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             c.skills.some(sk => sk.toLowerCase().includes(searchQuery.toLowerCase()));
+        if (!matchesQuery) return false;
+      }
+      return !!c.scheduledInterview && c.scheduledInterview.date === dateStr;
+    });
+  };
 
   // Add availability slot
   const handleAddSlot = async () => {
@@ -1064,7 +1118,52 @@ Recruitment Team`);
   };
 
   return (
-    <div id="recruiter_main_dashboard" className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <div className="space-y-6 w-full">
+      {/* Top Workspace Tab Selector */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-base font-bold font-display text-white">Recruiter Discovery Suite</h1>
+            <p className="text-xs text-slate-400">Manage candidates, source talent, schedule interviews, and drive stage transitions.</p>
+          </div>
+        </div>
+        
+        {/* Sub Tab Buttons */}
+        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <button
+            onClick={() => setRecruiterTab('pipeline')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              recruiterTab === 'pipeline'
+                ? "bg-slate-800 text-white shadow-md border border-slate-700/50"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <GitCompare className="w-3.5 h-3.5" />
+            Active Pipeline
+          </button>
+          <button
+            onClick={() => setRecruiterTab('calendar')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              recruiterTab === 'calendar'
+                ? "bg-slate-800 text-white shadow-md border border-slate-700/50"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Interview Calendar
+            {candidates.filter(c => c.scheduledInterview).length > 0 && (
+              <span className="px-1.5 py-0.5 text-[9px] bg-emerald-500 text-slate-950 font-mono font-black rounded-full leading-none">
+                {candidates.filter(c => c.scheduledInterview).length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div id="recruiter_main_dashboard" className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
       {/* LEFT COLUMN: Admin controls & job selectors */}
       <div className="lg:col-span-3 space-y-6">
@@ -1199,8 +1298,303 @@ Recruitment Team`);
 
       </div>
 
-      {/* SPLIT-SCREEN RESUME COMPARISON MODE */}
-      {activeCompareMode && selectedCandidatesForCompare.length === 2 && candA && candB ? (
+      {/* INTERVIEW CALENDAR OR COMPARISON / PIPELINE CHANNELS */}
+      {recruiterTab === 'calendar' ? (
+        <div className="lg:col-span-9 space-y-6">
+          {/* 9-column container for the Calendar Dashboard */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            {/* Left part: Calendar Grid */}
+            <div className="xl:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white font-display flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-400 font-bold" />
+                    Interview Scheduler Board
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Click on any candidate's interview cell to inspect details and process stage transitions.</p>
+                </div>
+
+                {/* Month selectors */}
+                <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-xs self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalendarMonth(6);
+                      setSelectedCalendarCandidateId(null);
+                    }}
+                    className={`px-3 py-1 rounded font-semibold transition-all cursor-pointer ${
+                      calendarMonth === 6
+                        ? "bg-slate-800 text-white border border-slate-700/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    June 2026
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalendarMonth(7);
+                      setSelectedCalendarCandidateId(null);
+                    }}
+                    className={`px-3 py-1 rounded font-semibold transition-all cursor-pointer ${
+                      calendarMonth === 7
+                        ? "bg-slate-800 text-white border border-slate-700/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    July 2026
+                  </button>
+                </div>
+              </div>
+
+              {/* Day headers */}
+              <div className="grid grid-cols-7 gap-1 text-center font-mono text-[9px] text-slate-500 uppercase font-black tracking-wider border-b border-slate-800/40 pb-2">
+                <span>Sun</span>
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+              </div>
+
+              {/* Grid Days */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {getCalendarDays(calendarMonth).map((dayObj, index) => {
+                  const interviewsOnThisDay = getInterviewsForDate(dayObj.dateString);
+                  const isToday = dayObj.dateString === "2026-06-30";
+
+                  return (
+                    <div
+                      key={`${dayObj.dateString}-${index}`}
+                      className={`min-h-[78px] p-1.5 rounded-lg border transition-all flex flex-col justify-between ${
+                        dayObj.isCurrentMonth
+                          ? isToday
+                            ? "bg-emerald-500/5 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.06)]"
+                            : "bg-slate-950/40 border-slate-850 hover:border-slate-700"
+                          : "bg-slate-950/10 border-slate-950 text-slate-600 opacity-40"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className={`text-[10px] font-mono font-bold ${
+                          isToday 
+                            ? "text-emerald-400 bg-emerald-500/20 px-1 py-0.5 rounded leading-none" 
+                            : dayObj.isCurrentMonth ? "text-slate-400" : "text-slate-600"
+                        }`}>
+                          {dayObj.day}
+                        </span>
+                        {isToday && (
+                          <span className="text-[7px] font-mono text-emerald-400 uppercase font-bold tracking-widest leading-none">Today</span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 mt-1.5 max-h-[46px] overflow-y-auto scrollbar-none">
+                        {interviewsOnThisDay.map(cand => {
+                          const isSelected = selectedCalendarCandidateId === cand.id;
+                          return (
+                            <button
+                              key={cand.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCalendarCandidateId(cand.id);
+                              }}
+                              className={`w-full text-left px-1.5 py-0.5 rounded text-[9px] font-mono leading-tight border transition-all flex flex-col truncate cursor-pointer ${
+                                isSelected
+                                  ? "bg-emerald-500 text-slate-950 border-emerald-400 font-bold"
+                                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-850 hover:border-slate-750"
+                              }`}
+                              title={`${cand.name} - ${cand.scheduledInterview?.time}`}
+                            >
+                              <span className="truncate">{cand.name}</span>
+                              <span className="opacity-80 text-[8px]">{cand.scheduledInterview?.time}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right Column: Selected Interview Details & Stage Transitions */}
+            <div className="xl:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+              <h4 className="text-xs font-semibold tracking-wider text-slate-400 uppercase font-display flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 font-bold" />
+                Calendar Inspector
+              </h4>
+
+              {selectedCalendarCandidateId ? (() => {
+                const cand = candidates.find(c => c.id === selectedCalendarCandidateId);
+                if (!cand) return <p className="text-xs text-slate-500 italic">Candidate not found.</p>;
+                const job = jobs.find(j => j.id === cand.jobId);
+                const interview = cand.scheduledInterview;
+
+                return (
+                  <div className="space-y-4 font-sans text-slate-200 animate-fadeIn">
+                    
+                    {/* Candidate identity summary */}
+                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-bold text-xs text-white">{cand.name}</h4>
+                          <p className="text-[10px] text-slate-400 truncate">{cand.email}</p>
+                        </div>
+                        <span className="text-[9px] px-2 py-0.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full font-mono font-bold uppercase shrink-0">
+                          {cand.stage}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 pt-1.5 border-t border-slate-900">
+                        <span className="font-semibold text-slate-300">Applied Role:</span> {job ? job.title : "N/A"}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        <span className="font-semibold text-slate-300">Experience:</span> {cand.experienceYears} Years
+                      </div>
+                    </div>
+
+                    {/* Interview details with link */}
+                    {interview ? (
+                      <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/20 rounded-xl space-y-2">
+                        <span className="text-[9px] text-emerald-400 font-mono uppercase tracking-wider block font-bold">Scheduled Details</span>
+                        <div className="text-[11px] space-y-1 text-slate-300">
+                          <p><span className="font-semibold text-slate-200">Date:</span> {interview.date}</p>
+                          <p><span className="font-semibold text-slate-200">Time:</span> {interview.time}</p>
+                          <p><span className="font-semibold text-slate-200">Host:</span> {interview.recruiterName}</p>
+                          <p className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-200">Status:</span> 
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[9px] uppercase font-black">
+                              {interview.status}
+                            </span>
+                          </p>
+                        </div>
+                        {interview.meetingLink && (
+                          <div className="pt-2 border-t border-emerald-500/10">
+                            <a
+                              href={interview.meetingLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-1.5 bg-emerald-500 text-slate-950 font-bold rounded-lg text-[10px] font-mono hover:bg-emerald-400 flex items-center justify-center gap-1 cursor-pointer transition-all shadow"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Launch Video Interview
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-400">No scheduled interview details recorded.</p>
+                    )}
+
+                    {/* Stage transition controls */}
+                    <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl space-y-3">
+                      <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider block">Candidate Stage Update Flow</span>
+                      
+                      <div className="space-y-1">
+                        <label className="block text-[10px] text-slate-400">Update Current Stage:</label>
+                        <select
+                          value={cand.stage}
+                          onChange={async (e) => {
+                            const newStage = e.target.value;
+                            await onUpdateCandidateStage(cand.id, newStage, cand.interviewStage);
+                            onRefreshData();
+                          }}
+                          className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-white rounded-lg p-2 focus:outline-none focus:border-slate-600 cursor-pointer"
+                        >
+                          <option value="Applied">Applied</option>
+                          <option value="Shortlisted">Shortlisted</option>
+                          <option value="Interview">Interview</option>
+                          <option value="Offer">Offer</option>
+                          <option value="Hired">Hired</option>
+                          <option value="Rejected">Rejected</option>
+                        </select>
+                      </div>
+
+                      {/* Sub-interview stage control */}
+                      {cand.stage === "Interview" && (
+                        <div className="space-y-1 pt-1.5 border-t border-slate-900 animate-fadeIn">
+                          <label className="block text-[10px] text-slate-400 font-mono">Active Interview Loop:</label>
+                          <select
+                            value={cand.interviewStage || "Screening"}
+                            onChange={async (e) => {
+                              const newLoop = e.target.value;
+                              await onUpdateCandidateStage(cand.id, cand.stage, newLoop);
+                              onRefreshData();
+                            }}
+                            className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-white rounded-lg p-2 focus:outline-none focus:border-slate-600 cursor-pointer"
+                          >
+                            <option value="Screening">1. Initial Screening</option>
+                            <option value="Technical">2. Core Technical Coding</option>
+                            <option value="Behavioral">3. Leadership &amp; Behavioral</option>
+                            <option value="Final">4. Executive / Director Round</option>
+                            <option value="None">None</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reschedule control options */}
+                    <div className="p-3 bg-slate-950/40 border border-slate-900 rounded-xl space-y-2">
+                      <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider block">Reschedule slot:</span>
+                      <div className="max-h-[140px] overflow-y-auto pr-1 space-y-1 scrollbar-thin">
+                        {availabilitySlots.filter(s => !s.booked).length > 0 ? (
+                          availabilitySlots.filter(s => !s.booked).map(slot => (
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/candidates/${cand.id}/book-interview`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ slotId: slot.id })
+                                  });
+                                  if (res.ok) {
+                                    onRefreshData();
+                                    fetchAvailability();
+                                  }
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }}
+                              className="w-full text-left p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-950 hover:border-slate-800 rounded flex justify-between items-center text-[10px] text-slate-300 cursor-pointer"
+                            >
+                              <span>{slot.date} &middot; {slot.time}</span>
+                              <span className="text-emerald-400 font-bold">Reschedule</span>
+                            </button>
+                          ))
+                        ) : (
+                          <p className="text-[9px] text-slate-600 italic">No alternative availability slots found.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Back to pipeline inspector shortcut */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveCandidateForView(cand);
+                        setRecruiterTab('pipeline');
+                      }}
+                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow flex items-center justify-center gap-1.5"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-400 font-bold" />
+                      Inspect Full Profile in Pipeline
+                    </button>
+                    
+                  </div>
+                );
+              })() : (
+                <div className="py-12 text-center text-slate-500 font-sans space-y-2">
+                  <Calendar className="w-8 h-8 text-slate-700 mx-auto opacity-60" />
+                  <p className="text-xs">No candidate selected.</p>
+                  <p className="text-[10px] text-slate-600">Select an interview badge on the calendar board to review candidates and manage stage progression.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : activeCompareMode && selectedCandidatesForCompare.length === 2 && candA && candB ? (
         <div className="lg:col-span-9 space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl space-y-6">
             
@@ -1625,6 +2019,27 @@ Recruitment Team`);
                   Export
                 </button>
               </div>
+            </div>
+
+            {/* Real-time search bar */}
+            <div className="relative mb-4">
+              <input
+                id="recruiter-realtime-search-bar"
+                type="text"
+                placeholder="Search candidates by name, email, or skill keywords..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-xs bg-slate-950 border border-slate-800 focus:border-slate-600 rounded-lg pl-9 pr-8 py-2 text-slate-100 focus:outline-none placeholder:text-slate-500 transition-all shadow-inner"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
             {/* Bulk Actions Banner */}
@@ -3658,6 +4073,73 @@ Recruitment Team`);
         </div>
       )}
 
+      {/* FLOATING BULK ACTIONS MENU */}
+      {bulkSelectedCandidateIds.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 50, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-emerald-500/30 backdrop-blur-md rounded-2xl px-6 py-4 shadow-2xl flex flex-col md:flex-row items-center gap-4 min-w-[320px] md:min-w-[600px] max-w-[95%] border-t-emerald-500/40"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-bold text-sm font-mono shadow-inner animate-pulse">
+              {bulkSelectedCandidateIds.length}
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white">Candidates Selected</p>
+              <p className="text-[10px] text-slate-400">Perform bulk stage transitions or rejections.</p>
+            </div>
+          </div>
+
+          <div className="h-px md:h-8 w-full md:w-px bg-slate-800 md:my-0 my-1" />
+
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:ml-auto">
+            {/* Quick transition actions */}
+            <span className="text-[10px] text-slate-500 font-mono uppercase tracking-wider hidden sm:inline">Set Stage:</span>
+            
+            <div className="flex flex-wrap gap-1.5">
+              {["Shortlisted", "Interview", "Offer", "Hired"].map((stg) => (
+                <button
+                  key={stg}
+                  type="button"
+                  onClick={() => handleOpenBulkActionModal("stage", stg)}
+                  className="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+                >
+                  {stg}
+                </button>
+              ))}
+              
+              <button
+                type="button"
+                onClick={() => handleOpenBulkActionModal("reject")}
+                className="px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-900/40 border border-rose-900/30 hover:border-rose-700/50 text-rose-300 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+              >
+                Reject All
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleOpenBulkActionModal("email")}
+              className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md ml-2"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              Batch Email
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setBulkSelectedCandidateIds([])}
+              className="px-2 py-1 text-slate-500 hover:text-slate-300 text-xs font-medium cursor-pointer ml-auto md:ml-0"
+            >
+              Clear
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      </div>
     </div>
   );
 }
