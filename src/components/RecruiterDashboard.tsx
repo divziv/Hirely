@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Job, Candidate } from "../types";
 import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 import { 
   Sparkles, Briefcase, GraduationCap, MapPin, CheckCircle, Clock, 
   AlertTriangle, X, UserCheck, FileText, Plus, Search, Filter,
@@ -41,6 +42,7 @@ export default function RecruiterDashboard({
   const [selectedSkillFilter, setSelectedSkillFilter] = useState<string>("");
   const [selectedCandidatesForCompare, setSelectedCandidatesForCompare] = useState<string[]>([]);
   const [activeCompareMode, setActiveCompareMode] = useState(false);
+  const [compareViewType, setCompareViewType] = useState<"resume" | "metrics">("metrics");
   const [activeCandidateForView, setActiveCandidateForView] = useState<Candidate | null>(null);
 
   // Simulated notification states
@@ -1052,6 +1054,59 @@ Recruitment Team`);
     document.body.removeChild(link);
   };
 
+  // Export Candidate list to XLSX file
+  const handleExportToXLSX = () => {
+    // Sort candidates by final recommendation score descending
+    const sortedCandidates = [...filteredCandidates].sort((a, b) => {
+      const scoreA = a.rankingMetrics?.finalScore ?? 0;
+      const scoreB = b.rankingMetrics?.finalScore ?? 0;
+      return scoreB - scoreA;
+    });
+
+    const data = sortedCandidates.map((c, index) => ({
+      "Recommendation Rank": index + 1,
+      "Candidate Name": c.name,
+      "Email Address": c.email,
+      "Overall Match Score": c.rankingMetrics?.finalScore !== undefined ? `${c.rankingMetrics.finalScore}%` : "N/A",
+      "Semantic Relevance Score": c.rankingMetrics?.semanticScore !== undefined ? `${c.rankingMetrics.semanticScore}%` : "N/A",
+      "Skill Alignment Score": c.rankingMetrics?.skillMatchScore !== undefined ? `${c.rankingMetrics.skillMatchScore}%` : "N/A",
+      "Experience Match Score": c.rankingMetrics?.expMatchScore !== undefined ? `${c.rankingMetrics.expMatchScore}%` : "N/A",
+      "Experience (Years)": c.experienceYears,
+      "Matched Must-Have Skills": c.rankingMetrics?.matchedMustSkills?.join(", ") || "None",
+      "Missing Must-Have Skills": c.rankingMetrics?.missingMustSkills?.join(", ") || "None",
+      "Skills List": c.skills.join(", "),
+      "Education Details": c.education.join(" | "),
+      "Application Stage": c.stage,
+      "Interview Phase": c.interviewStage || "None",
+      "Expected Salary (LPA)": c.salaryExpectation ? `₹${(c.salaryExpectation / 100000).toFixed(2)} Lakhs` : "N/A",
+      "Offered Salary (LPA)": c.salaryOffer ? `₹${(c.salaryOffer / 100000).toFixed(2)} Lakhs` : "N/A",
+      "AI Evaluation Summary": c.rankingMetrics?.aiExplanation || "N/A"
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Ranked Recommendations");
+
+    // Auto-fit column widths
+    const maxLengths = Object.keys(data[0] || {}).reduce((acc, key) => {
+      let maxLen = key.length;
+      data.forEach(row => {
+        const val = String((row as any)[key] || "");
+        if (val.length > maxLen) {
+          maxLen = val.length;
+        }
+      });
+      acc[key] = Math.min(maxLen + 2, 45); // Limit column width to 45 characters
+      return acc;
+    }, {} as Record<string, number>);
+
+    worksheet["!cols"] = Object.keys(data[0] || {}).map(key => ({
+      wch: maxLengths[key]
+    }));
+
+    XLSX.writeFile(workbook, `ranked_candidates_${selectedJob?.title.toLowerCase().replace(/\s+/g, "_") || "all"}_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
   const filteredCandidates = (rankedResults.length > 0 ? rankedResults : candidates).filter(cand => {
     // 1. Text filter (includes name, email, stage, and skills)
     const matchesSearch = cand.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1605,20 +1660,49 @@ Recruitment Team`);
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
                   <h2 className="text-base font-bold text-white font-display flex items-center gap-2">
                     <GitCompare className="w-5 h-5 text-blue-400" />
-                    Interactive Split-Screen Resume Comparison
+                    Interactive Side-by-Side Comparison Dashboard
                   </h2>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Side-by-side analysis of candidate profiles, highlighted to isolate joint stack proficiencies versus unique developer capabilities.
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Side-by-side alignment analysis of candidate competencies, soft skills, cognitive parameters, and career trajectories.
                 </p>
               </div>
               
               <button
+                type="button"
                 onClick={() => setActiveCompareMode(false)}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:text-white text-slate-300 rounded-lg text-xs font-mono transition-all flex items-center gap-1 cursor-pointer self-start"
               >
                 <X className="w-4 h-4" />
                 Exit Comparison View
+              </button>
+            </div>
+
+            {/* View Sub-Tabs Toggles */}
+            <div className="flex flex-wrap bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs w-fit gap-1">
+              <button
+                type="button"
+                onClick={() => setCompareViewType("metrics")}
+                className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  compareViewType === "metrics"
+                    ? "bg-slate-800 text-white border border-slate-700/50"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                Key Skills &amp; Experience Metrics
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompareViewType("resume")}
+                className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  compareViewType === "resume"
+                    ? "bg-slate-800 text-white border border-slate-700/50"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-400" />
+                Full Resumes &amp; Highlighted Text
               </button>
             </div>
 
@@ -1631,10 +1715,10 @@ Recruitment Team`);
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
-                {/* Column 1: Overlapping Skills */}
+                {/* Shared Core Skills */}
                 <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
                   <span className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     Shared Core Skills ({overlappingSkills.length})
                   </span>
                   <div className="flex flex-wrap gap-1">
@@ -1649,7 +1733,7 @@ Recruitment Team`);
                   </div>
                 </div>
 
-                {/* Column 2: Unique to Candidate A */}
+                {/* Unique to Candidate A */}
                 <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
                   <span className="text-[9px] font-mono font-bold text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
@@ -1667,7 +1751,7 @@ Recruitment Team`);
                   </div>
                 </div>
 
-                {/* Column 3: Unique to Candidate B */}
+                {/* Unique to Candidate B */}
                 <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
                   <span className="text-[9px] font-mono font-bold text-purple-400 uppercase tracking-widest flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
@@ -1688,92 +1772,212 @@ Recruitment Team`);
               </div>
             </div>
 
-            {/* Side-by-Side Split View columns */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* CANDIDATE A PANELS */}
-              <div className="space-y-4">
-                {/* Candidate A Card Header */}
-                <div className={`p-4 rounded-xl border ${candA.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-3`}>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => handleTogglePriority(e, candA.id, !!candA.isPriority)}
-                          className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
-                          title={candA.isPriority ? "Remove Priority Flag" : "Mark as Priority / High-Potential"}
-                        >
-                          {candA.isPriority ? (
-                            <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                          ) : (
-                            <Star className="w-5 h-5 text-slate-600 hover:text-amber-400" />
-                          )}
-                        </button>
-                        <h3 className="text-sm font-bold text-white">
-                          {isBlindMode ? `Anonymous Candidate #${candA.id.slice(-4)}` : candA.name}
-                        </h3>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        {isBlindMode ? "redacted-email@talent.demo" : candA.email}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-xs font-bold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
-                        {candA.rankingMetrics?.finalScore || 50}% Fit
-                      </span>
-                      <span className="text-[8px] block text-slate-500 font-mono mt-1">AI MATCH SCORE</span>
-                    </div>
-                  </div>
-
-                  {/* General Highlights */}
-                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-b border-slate-900 py-2">
-                    <div>
-                      <span className="text-slate-500 block text-[8px]">EXPERIENCE:</span>
-                      <span className="text-slate-200 font-bold">{candA.experienceYears} Years</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[8px]">PIPELINE STAGE:</span>
-                      <span className="text-blue-400 font-bold">{candA.stage}</span>
-                    </div>
-                  </div>
-
-                  {/* Editable Salary Blocks */}
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-900 space-y-2.5">
-                    <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Financial Profile (Lakhs LPA)</span>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
-                        <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-mono">₹</span>
-                          <input
-                            type="number"
-                            defaultValue={candA.salaryExpectation ? candA.salaryExpectation / 100000 : ""}
-                            placeholder="Expected (LPA)"
-                            onChange={(e) => {
-                              const val = Number(e.target.value) * 100000;
-                              handleUpdateSalary(candA.id, val, candA.salaryOffer);
-                            }}
-                            className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
-                          />
-                          <span className="text-[9px] text-slate-500 font-mono">L</span>
+            {/* MAIN COMPARISON SWITCH */}
+            {compareViewType === "metrics" ? (
+              <div className="space-y-6">
+                
+                {/* 1. STYLED PROFILE OVERVIEWS SIDE-BY-SIDE */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* CANDIDATE A PROFILE SUMMARY CARD */}
+                  <div className={`p-4 rounded-xl border ${candA.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-4 relative overflow-hidden`}>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-blue-500/5 via-transparent to-transparent pointer-events-none"></div>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center font-bold font-display text-sm border border-blue-500/20">
+                          {isBlindMode ? "CA" : candA.name.split(" ").map(n => n[0]).join("")}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePriority(e, candA.id, !!candA.isPriority)}
+                              className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
+                            >
+                              {candA.isPriority ? (
+                                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                              ) : (
+                                <Star className="w-4 h-4 text-slate-600 hover:text-amber-400" />
+                              )}
+                            </button>
+                            <h3 className="text-sm font-bold text-white leading-none">
+                              {isBlindMode ? `Candidate A (ID: #${candA.id.slice(-4)})` : candA.name}
+                            </h3>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            {isBlindMode ? "redacted-email@talent.demo" : candA.email}
+                          </p>
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                              Applied: {candA.appliedDate}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Made</label>
-                        <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-mono">₹</span>
-                          <input
-                            type="number"
-                            defaultValue={candA.salaryOffer ? candA.salaryOffer / 100000 : ""}
-                            placeholder="Offer (LPA)"
-                            onChange={(e) => {
-                              const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
-                              handleUpdateSalary(candA.id, candA.salaryExpectation || 0, val);
-                            }}
-                            className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
-                          />
-                          <span className="text-[9px] text-slate-500 font-mono">L</span>
+
+                      <div className="text-right">
+                        <div className="inline-block bg-blue-500/10 border border-blue-500/20 text-blue-400 px-2.5 py-1 rounded-lg">
+                          <span className="text-sm font-bold font-mono">{candA.rankingMetrics?.finalScore || 50}%</span>
+                          <span className="text-[8px] block font-mono uppercase text-slate-500">Match score</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pipeline Stage Controller */}
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-900 flex items-center justify-between gap-2">
+                      <span className="text-[9px] text-slate-500 font-mono uppercase">Pipeline Stage:</span>
+                      <select
+                        value={candA.stage}
+                        onChange={(e) => handleStageChange(candA.id, e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-blue-400 font-bold focus:outline-none focus:border-slate-600 cursor-pointer"
+                      >
+                        <option value="Applied">Applied</option>
+                        <option value="Shortlisted">Shortlisted</option>
+                        <option value="Interview">Interview</option>
+                        <option value="Offer">Offer</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+                    </div>
+
+                    {/* Financial Alignment Coordinates */}
+                    <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
+                      <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Compensation Metrics</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-850">
+                            <span className="text-[9px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candA.salaryExpectation ? candA.salaryExpectation / 100000 : ""}
+                              placeholder="Expected"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) * 100000;
+                                handleUpdateSalary(candA.id, val, candA.salaryOffer);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-slate-200 focus:outline-none"
+                            />
+                            <span className="text-[8px] text-slate-500 font-mono">LPA</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Proposed</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-850">
+                            <span className="text-[9px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candA.salaryOffer ? candA.salaryOffer / 100000 : ""}
+                              placeholder="Offer"
+                              onChange={(e) => {
+                                const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
+                                handleUpdateSalary(candA.id, candA.salaryExpectation || 0, val);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-slate-200 focus:outline-none"
+                            />
+                            <span className="text-[8px] text-slate-500 font-mono">LPA</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CANDIDATE B PROFILE SUMMARY CARD */}
+                  <div className={`p-4 rounded-xl border ${candB.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-4 relative overflow-hidden`}>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-purple-500/5 via-transparent to-transparent pointer-events-none"></div>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold font-display text-sm border border-purple-500/20">
+                          {isBlindMode ? "CB" : candB.name.split(" ").map(n => n[0]).join("")}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePriority(e, candB.id, !!candB.isPriority)}
+                              className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
+                            >
+                              {candB.isPriority ? (
+                                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                              ) : (
+                                <Star className="w-4 h-4 text-slate-600 hover:text-amber-400" />
+                              )}
+                            </button>
+                            <h3 className="text-sm font-bold text-white leading-none">
+                              {isBlindMode ? `Candidate B (ID: #${candB.id.slice(-4)})` : candB.name}
+                            </h3>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            {isBlindMode ? "redacted-email@talent.demo" : candB.email}
+                          </p>
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                              Applied: {candB.appliedDate}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="inline-block bg-purple-500/10 border border-purple-500/20 text-purple-400 px-2.5 py-1 rounded-lg">
+                          <span className="text-sm font-bold font-mono">{candB.rankingMetrics?.finalScore || 50}%</span>
+                          <span className="text-[8px] block font-mono uppercase text-slate-500">Match score</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pipeline Stage Controller */}
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-900 flex items-center justify-between gap-2">
+                      <span className="text-[9px] text-slate-500 font-mono uppercase">Pipeline Stage:</span>
+                      <select
+                        value={candB.stage}
+                        onChange={(e) => handleStageChange(candB.id, e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-purple-400 font-bold focus:outline-none focus:border-slate-600 cursor-pointer"
+                      >
+                        <option value="Applied">Applied</option>
+                        <option value="Shortlisted">Shortlisted</option>
+                        <option value="Interview">Interview</option>
+                        <option value="Offer">Offer</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+                    </div>
+
+                    {/* Financial Alignment Coordinates */}
+                    <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 space-y-2">
+                      <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider block">Compensation Metrics</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-850">
+                            <span className="text-[9px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candB.salaryExpectation ? candB.salaryExpectation / 100000 : ""}
+                              placeholder="Expected"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) * 100000;
+                                handleUpdateSalary(candB.id, val, candB.salaryOffer);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-slate-200 focus:outline-none"
+                            />
+                            <span className="text-[8px] text-slate-500 font-mono">LPA</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Proposed</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-850">
+                            <span className="text-[9px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candB.salaryOffer ? candB.salaryOffer / 100000 : ""}
+                              placeholder="Offer"
+                              onChange={(e) => {
+                                const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
+                                handleUpdateSalary(candB.id, candB.salaryExpectation || 0, val);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-slate-200 focus:outline-none"
+                            />
+                            <span className="text-[8px] text-slate-500 font-mono">LPA</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1781,155 +1985,750 @@ Recruitment Team`);
 
                 </div>
 
-                {/* Resume viewer A with skill highlighter */}
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3 shadow-inner">
-                  <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block">Curriculum Vitae Preview</span>
-                  <div className="max-h-[350px] overflow-y-auto pr-1 text-[11px]/relaxed font-mono text-slate-300 space-y-4 scrollbar-thin">
-                    <div className="space-y-1">
-                      <span className="text-[9px] block text-slate-500 uppercase">Education</span>
-                      <p className="text-white text-xs">{candA.education.join(" | ")}</p>
-                    </div>
+                {/* 2. CORE COGNITIVE & FIT SUB-SCORES TABLE */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
+                    <Activity className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">Cognitive AI Matching Subscores</span>
+                  </div>
+
+                  <div className="space-y-3.5">
                     
-                    <div className="space-y-1 border-t border-slate-900 pt-2">
-                      <span className="text-[9px] block text-slate-500 uppercase">Featured Projects</span>
-                      <ul className="list-disc list-inside space-y-1 pl-1 text-slate-200">
-                        {candA.projects.map((p, i) => (
-                          <li key={i}>{p}</li>
-                        ))}
-                      </ul>
+                    {/* Row 1: Semantic Alignment */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-slate-400 uppercase tracking-wider">Semantic Match Alignment</span>
+                        <div className="space-x-3">
+                          <span className="text-blue-400">A: {candA.rankingMetrics?.semanticScore || 60}%</span>
+                          <span className="text-purple-400">B: {candB.rankingMetrics?.semanticScore || 60}%</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-blue-500 h-full rounded-full" style={{ width: `${candA.rankingMetrics?.semanticScore || 60}%` }}></div>
+                        </div>
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${candB.rankingMetrics?.semanticScore || 60}%` }}></div>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-1 border-t border-slate-900 pt-2">
-                      <span className="text-[9px] block text-slate-500 uppercase">Full Resume Parser Text</span>
-                      <p className="whitespace-pre-wrap text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 leading-relaxed font-sans">
-                        {renderHighlightedText(candA.resumeText, overlappingSkills, uniqueSkillsA, "bg-blue-500/10 text-blue-300 border-blue-500/20", "border-blue-500/20")}
-                      </p>
+                    {/* Row 2: Skill Set Compliance Score */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-slate-400 uppercase tracking-wider">Technical Skill Set Compliance</span>
+                        <div className="space-x-3">
+                          <span className="text-blue-400">A: {candA.rankingMetrics?.skillMatchScore || 60}%</span>
+                          <span className="text-purple-400">B: {candB.rankingMetrics?.skillMatchScore || 60}%</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-blue-500 h-full rounded-full" style={{ width: `${candA.rankingMetrics?.skillMatchScore || 60}%` }}></div>
+                        </div>
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${candB.rankingMetrics?.skillMatchScore || 60}%` }}></div>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Row 3: Career History Experience Score */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-slate-400 uppercase tracking-wider">Career History Relevance</span>
+                        <div className="space-x-3">
+                          <span className="text-blue-400">A: {candA.rankingMetrics?.expMatchScore || 60}%</span>
+                          <span className="text-purple-400">B: {candB.rankingMetrics?.expMatchScore || 60}%</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-blue-500 h-full rounded-full" style={{ width: `${candA.rankingMetrics?.expMatchScore || 60}%` }}></div>
+                        </div>
+                        <div className="bg-slate-900 rounded-full h-full">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${candB.rankingMetrics?.expMatchScore || 60}%` }}></div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* 3. MUST-HAVE SKILLS MATRIX SIDE-BY-SIDE */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
+                    <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">Must-Have Skill Set Alignment</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* Candidate A Skills */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <p className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider">
+                          {isBlindMode ? "Candidate A" : candA.name.split(" ")[0]}'s Parity
+                        </p>
+                        <span className="text-[9px] font-mono text-slate-500">
+                          Matched: {candA.rankingMetrics?.matchedMustSkills?.length || 0}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3 bg-slate-900/30 p-3 rounded-lg border border-slate-900">
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">Passed Filters (Must-Haves)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candA.rankingMetrics?.matchedMustSkills && candA.rankingMetrics.matchedMustSkills.length > 0 ? (
+                              candA.rankingMetrics.matchedMustSkills.map(sk => (
+                                <span key={sk} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] px-2 py-0.5 rounded font-mono font-medium flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  {sk}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[9px] text-slate-600 italic">None logged.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">Gaps Detected (Missing)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candA.rankingMetrics?.missingMustSkills && candA.rankingMetrics.missingMustSkills.length > 0 ? (
+                              candA.rankingMetrics.missingMustSkills.map(sk => (
+                                <span key={sk} className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] px-2 py-0.5 rounded font-mono font-medium flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-rose-400"></span>
+                                  {sk}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[9px] text-emerald-400 italic font-mono flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                100% Match! No missing core requirements.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">All Listed Skills</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candA.skills.map(sk => {
+                              const level = candA.skillProgress?.[sk];
+                              const isExpert = level === "Expert";
+                              const isInter = level === "Intermediate";
+                              return (
+                                <span 
+                                  key={sk} 
+                                  className={`text-[9px] px-2 py-0.5 rounded font-mono font-medium ${
+                                    isExpert 
+                                      ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" 
+                                      : isInter 
+                                        ? "bg-slate-800 text-slate-300 border border-slate-700" 
+                                        : "bg-slate-900/60 text-slate-400 border border-slate-950"
+                                  }`}
+                                  title={`Mastery: ${level || "Not verified"}`}
+                                >
+                                  {sk} {level && `(${level[0]})`}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Candidate B Skills */}
+                    <div className="space-y-3 border-t md:border-t-0 md:border-l border-slate-900 md:pl-6">
+                      <div className="flex justify-between items-center">
+                        <p className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-wider">
+                          {isBlindMode ? "Candidate B" : candB.name.split(" ")[0]}'s Parity
+                        </p>
+                        <span className="text-[9px] font-mono text-slate-500">
+                          Matched: {candB.rankingMetrics?.matchedMustSkills?.length || 0}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3 bg-slate-900/30 p-3 rounded-lg border border-slate-900">
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">Passed Filters (Must-Haves)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candB.rankingMetrics?.matchedMustSkills && candB.rankingMetrics.matchedMustSkills.length > 0 ? (
+                              candB.rankingMetrics.matchedMustSkills.map(sk => (
+                                <span key={sk} className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] px-2 py-0.5 rounded font-mono font-medium flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  {sk}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[9px] text-slate-600 italic">None logged.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">Gaps Detected (Missing)</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candB.rankingMetrics?.missingMustSkills && candB.rankingMetrics.missingMustSkills.length > 0 ? (
+                              candB.rankingMetrics.missingMustSkills.map(sk => (
+                                <span key={sk} className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] px-2 py-0.5 rounded font-mono font-medium flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-rose-400"></span>
+                                  {sk}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[9px] text-emerald-400 italic font-mono flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                100% Match! No missing core requirements.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-mono uppercase text-slate-500 block mb-1">All Listed Skills</span>
+                          <div className="flex flex-wrap gap-1">
+                            {candB.skills.map(sk => {
+                              const level = candB.skillProgress?.[sk];
+                              const isExpert = level === "Expert";
+                              const isInter = level === "Intermediate";
+                              return (
+                                <span 
+                                  key={sk} 
+                                  className={`text-[9px] px-2 py-0.5 rounded font-mono font-medium ${
+                                    isExpert 
+                                      ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" 
+                                      : isInter 
+                                        ? "bg-slate-800 text-slate-300 border border-slate-700" 
+                                        : "bg-slate-900/60 text-slate-400 border border-slate-950"
+                                  }`}
+                                  title={`Mastery: ${level || "Not verified"}`}
+                                >
+                                  {sk} {level && `(${level[0]})`}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* 4. CAREER CHRONOLOGY & TIMELINES SIDE-BY-SIDE */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
+                    <Briefcase className="w-4 h-4 text-blue-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">Career Chronology &amp; Timeline Journeys</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* Candidate A Journey */}
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-mono mb-1">
+                          <span className="text-slate-500 uppercase">Experience Years:</span>
+                          <span className="text-blue-400 font-bold">{candA.experienceYears} Years</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-blue-500 h-full rounded-full" style={{ width: `${Math.min((candA.experienceYears / 12) * 100, 100)}%` }}></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 bg-slate-900/20 p-2.5 rounded border border-slate-900/60">
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Education coordinates:</span>
+                        <p className="text-xs text-slate-200 font-mono flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          {candA.education.join(" | ")}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Professional Employment Timeline:</span>
+                        <div className="space-y-2">
+                          {candA.experience && candA.experience.length > 0 ? (
+                            candA.experience.map((exp, idx) => (
+                              <div key={idx} className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-900 space-y-1 hover:border-slate-800 transition-colors">
+                                <div className="flex justify-between items-start">
+                                  <span className="text-xs font-bold text-white">{exp.title}</span>
+                                  <span className="text-[9px] font-mono font-semibold text-blue-400 shrink-0 ml-2">{exp.duration}</span>
+                                </div>
+                                <p className="text-[11px] text-slate-400">{exp.company}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-slate-600 italic">No detailed employment roles found.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Candidate B Journey */}
+                    <div className="space-y-4 border-t md:border-t-0 md:border-l border-slate-900 md:pl-6">
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-mono mb-1">
+                          <span className="text-slate-500 uppercase">Experience Years:</span>
+                          <span className="text-purple-400 font-bold">{candB.experienceYears} Years</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-purple-500 h-full rounded-full" style={{ width: `${Math.min((candB.experienceYears / 12) * 100, 100)}%` }}></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 bg-slate-900/20 p-2.5 rounded border border-slate-900/60">
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Education coordinates:</span>
+                        <p className="text-xs text-slate-200 font-mono flex items-center gap-1">
+                          <GraduationCap className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          {candB.education.join(" | ")}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <span className="text-[9px] text-slate-500 font-mono uppercase block">Professional Employment Timeline:</span>
+                        <div className="space-y-2">
+                          {candB.experience && candB.experience.length > 0 ? (
+                            candB.experience.map((exp, idx) => (
+                              <div key={idx} className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-900 space-y-1 hover:border-slate-800 transition-colors">
+                                <div className="flex justify-between items-start">
+                                  <span className="text-xs font-bold text-white">{exp.title}</span>
+                                  <span className="text-[9px] font-mono font-semibold text-purple-400 shrink-0 ml-2">{exp.duration}</span>
+                                </div>
+                                <p className="text-[11px] text-slate-400">{exp.company}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-slate-600 italic">No detailed employment roles found.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* 5. BEHAVIORAL INDICES & PLATFORM METRICS */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">Behavioral Signals, Coding Tests &amp; Ratings</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* Candidate A metrics */}
+                    <div className="space-y-3">
+                      <p className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider mb-1">
+                        {isBlindMode ? "Candidate A" : candA.name.split(" ")[0]}'s Soft &amp; Hard Indicators
+                      </p>
+
+                      <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-900 space-y-2">
+                        <div className="flex justify-between items-center text-xs font-mono">
+                          <span className="text-slate-400">Coding challenge Score:</span>
+                          <span className="text-emerald-400 font-bold">{candA.platformActivity?.codingScore || 75} / 100</span>
+                        </div>
+                        <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-emerald-400 h-full" style={{ width: `${candA.platformActivity?.codingScore || 75}%` }}></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 bg-slate-900/30 p-3 rounded-lg border border-slate-900 text-xs font-mono">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Ownership Drive:</span>
+                          <span className="text-slate-200 font-bold">{candA.behavioralSignals?.ownership || 4} / 5 ★</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Leadership Initiative:</span>
+                          <span className="text-slate-200 font-bold">{candA.behavioralSignals?.leadership || 4} / 5 ★</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Team Collaboration:</span>
+                          <span className="text-slate-200 font-bold">{candA.behavioralSignals?.collaboration || 4} / 5 ★</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-slate-900/30 p-2 rounded border border-slate-900">
+                        <div>
+                          <span className="block text-slate-500 uppercase text-[8px]">Responsiveness:</span>
+                          <strong className="text-slate-200">{candA.platformActivity?.responsivenessScore || 85}%</strong>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500 uppercase text-[8px]">Completeness:</span>
+                          <strong className="text-slate-200">{candA.platformActivity?.profileCompleteness || 80}%</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Candidate B metrics */}
+                    <div className="space-y-3 border-t md:border-t-0 md:border-l border-slate-900 md:pl-6">
+                      <p className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-wider mb-1">
+                        {isBlindMode ? "Candidate B" : candB.name.split(" ")[0]}'s Soft &amp; Hard Indicators
+                      </p>
+
+                      <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-900 space-y-2">
+                        <div className="flex justify-between items-center text-xs font-mono">
+                          <span className="text-slate-400">Coding challenge Score:</span>
+                          <span className="text-emerald-400 font-bold">{candB.platformActivity?.codingScore || 75} / 100</span>
+                        </div>
+                        <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-emerald-400 h-full" style={{ width: `${candB.platformActivity?.codingScore || 75}%` }}></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 bg-slate-900/30 p-3 rounded-lg border border-slate-900 text-xs font-mono">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Ownership Drive:</span>
+                          <span className="text-slate-200 font-bold">{candB.behavioralSignals?.ownership || 4} / 5 ★</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Leadership Initiative:</span>
+                          <span className="text-slate-200 font-bold">{candB.behavioralSignals?.leadership || 4} / 5 ★</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Team Collaboration:</span>
+                          <span className="text-slate-200 font-bold">{candB.behavioralSignals?.collaboration || 4} / 5 ★</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-slate-900/30 p-2 rounded border border-slate-900">
+                        <div>
+                          <span className="block text-slate-500 uppercase text-[8px]">Responsiveness:</span>
+                          <strong className="text-slate-200">{candB.platformActivity?.responsivenessScore || 85}%</strong>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500 uppercase text-[8px]">Completeness:</span>
+                          <strong className="text-slate-200">{candB.platformActivity?.profileCompleteness || 80}%</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* 6. TEAM STRUCTURED EVALUATION COMPARISON */}
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-4">
+                  <div className="flex items-center gap-1.5 border-b border-slate-900 pb-2">
+                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider">Hiring Team Structured Scorecards</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    {/* Candidate A Evaluator Feedback */}
+                    <div className="space-y-3 text-xs">
+                      {candA.structuredFeedback ? (
+                        <div className="space-y-3 bg-slate-900/40 p-3 rounded-lg border border-slate-900">
+                          <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">TECH</span>
+                              <strong className="text-emerald-400">{candA.structuredFeedback.technicalProficiency}/5</strong>
+                            </div>
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">COMM</span>
+                              <strong className="text-emerald-400">{candA.structuredFeedback.communication}/5</strong>
+                            </div>
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">CULTURE</span>
+                              <strong className="text-emerald-400">{candA.structuredFeedback.culturalAlignment}/5</strong>
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-slate-300 font-mono italic leading-relaxed border-t border-slate-900 pt-2">
+                            "{candA.structuredFeedback.additionalNotes || "No notes logged."}"
+                          </div>
+                          <div className="text-[9px] text-slate-500 font-mono text-right">
+                            Rec: <strong className="text-emerald-400">{candA.structuredFeedback.overallRecommendation}</strong>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-900/20 p-4 rounded-lg border border-slate-900 text-center text-slate-500 text-xs italic py-6">
+                          Recruiter review pending. No evaluation submitted yet.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Candidate B Evaluator Feedback */}
+                    <div className="space-y-3 text-xs border-t md:border-t-0 md:border-l border-slate-900 md:pl-6">
+                      {candB.structuredFeedback ? (
+                        <div className="space-y-3 bg-slate-900/40 p-3 rounded-lg border border-slate-900">
+                          <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">TECH</span>
+                              <strong className="text-emerald-400">{candB.structuredFeedback.technicalProficiency}/5</strong>
+                            </div>
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">COMM</span>
+                              <strong className="text-emerald-400">{candB.structuredFeedback.communication}/5</strong>
+                            </div>
+                            <div className="bg-slate-950 p-1.5 rounded border border-slate-900">
+                              <span className="text-[8px] text-slate-500 block">CULTURE</span>
+                              <strong className="text-emerald-400">{candB.structuredFeedback.culturalAlignment}/5</strong>
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-slate-300 font-mono italic leading-relaxed border-t border-slate-900 pt-2">
+                            "{candB.structuredFeedback.additionalNotes || "No notes logged."}"
+                          </div>
+                          <div className="text-[9px] text-slate-500 font-mono text-right">
+                            Rec: <strong className="text-emerald-400">{candB.structuredFeedback.overallRecommendation}</strong>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-900/20 p-4 rounded-lg border border-slate-900 text-center text-slate-500 text-xs italic py-6">
+                          Recruiter review pending. No evaluation submitted yet.
+                        </div>
+                      )}
+                    </div>
+
                   </div>
                 </div>
 
               </div>
-
-              {/* CANDIDATE B PANELS */}
-              <div className="space-y-4">
-                {/* Candidate B Card Header */}
-                <div className={`p-4 rounded-xl border ${candB.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-3`}>
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => handleTogglePriority(e, candB.id, !!candB.isPriority)}
-                          className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
-                          title={candB.isPriority ? "Remove Priority Flag" : "Mark as Priority / High-Potential"}
-                        >
-                          {candB.isPriority ? (
-                            <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                          ) : (
-                            <Star className="w-5 h-5 text-slate-600 hover:text-amber-400" />
-                          )}
-                        </button>
-                        <h3 className="text-sm font-bold text-white">
-                          {isBlindMode ? `Anonymous Candidate #${candB.id.slice(-4)}` : candB.name}
-                        </h3>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        {isBlindMode ? "redacted-email@talent.demo" : candB.email}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-xs font-bold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
-                        {candB.rankingMetrics?.finalScore || 50}% Fit
-                      </span>
-                      <span className="text-[8px] block text-slate-500 font-mono mt-1">AI MATCH SCORE</span>
-                    </div>
-                  </div>
-
-                  {/* General Highlights */}
-                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-b border-slate-900 py-2">
-                    <div>
-                      <span className="text-slate-500 block text-[8px]">EXPERIENCE:</span>
-                      <span className="text-slate-200 font-bold">{candB.experienceYears} Years</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block text-[8px]">PIPELINE STAGE:</span>
-                      <span className="text-blue-400 font-bold">{candB.stage}</span>
-                    </div>
-                  </div>
-
-                  {/* Editable Salary Blocks */}
-                  <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-900 space-y-2.5">
-                    <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Financial Profile (Lakhs LPA)</span>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
-                        <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-mono">₹</span>
-                          <input
-                            type="number"
-                            defaultValue={candB.salaryExpectation ? candB.salaryExpectation / 100000 : ""}
-                            placeholder="Expected (LPA)"
-                            onChange={(e) => {
-                              const val = Number(e.target.value) * 100000;
-                              handleUpdateSalary(candB.id, val, candB.salaryOffer);
-                            }}
-                            className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
-                          />
-                          <span className="text-[9px] text-slate-500 font-mono">L</span>
+            ) : (
+              /* ORIGINAL SIDE-BY-SIDE SPLIT VIEW COLUMNS WITH GRANULAR RESUME DETAILS */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* CANDIDATE A PANELS */}
+                <div className="space-y-4">
+                  {/* Candidate A Card Header */}
+                  <div className={`p-4 rounded-xl border ${candA.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-3`}>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => handleTogglePriority(e, candA.id, !!candA.isPriority)}
+                            className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
+                            title={candA.isPriority ? "Remove Priority Flag" : "Mark as Priority / High-Potential"}
+                          >
+                            {candA.isPriority ? (
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                            ) : (
+                              <Star className="w-5 h-5 text-slate-600 hover:text-amber-400" />
+                            )}
+                          </button>
+                          <h3 className="text-sm font-bold text-white">
+                            {isBlindMode ? `Anonymous Candidate #${candA.id.slice(-4)}` : candA.name}
+                          </h3>
                         </div>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          {isBlindMode ? "redacted-email@talent.demo" : candA.email}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs font-bold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                          {candA.rankingMetrics?.finalScore || 50}% Fit
+                        </span>
+                        <span className="text-[8px] block text-slate-500 font-mono mt-1">AI MATCH SCORE</span>
+                      </div>
+                    </div>
+
+                    {/* General Highlights */}
+                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-b border-slate-900 py-2">
+                      <div>
+                        <span className="text-slate-500 block text-[8px]">EXPERIENCE:</span>
+                        <span className="text-slate-200 font-bold">{candA.experienceYears} Years</span>
                       </div>
                       <div>
-                        <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Made</label>
-                        <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-mono">₹</span>
-                          <input
-                            type="number"
-                            defaultValue={candB.salaryOffer ? candB.salaryOffer / 100000 : ""}
-                            placeholder="Offer (LPA)"
-                            onChange={(e) => {
-                              const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
-                              handleUpdateSalary(candB.id, candB.salaryExpectation || 0, val);
-                            }}
-                            className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
-                          />
-                          <span className="text-[9px] text-slate-500 font-mono">L</span>
+                        <span className="text-slate-500 block text-[8px]">PIPELINE STAGE:</span>
+                        <span className="text-blue-400 font-bold">{candA.stage}</span>
+                      </div>
+                    </div>
+
+                    {/* Editable Salary Blocks */}
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-900 space-y-2.5">
+                      <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Financial Profile (Lakhs LPA)</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candA.salaryExpectation ? candA.salaryExpectation / 100000 : ""}
+                              placeholder="Expected (LPA)"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) * 100000;
+                                handleUpdateSalary(candA.id, val, candA.salaryOffer);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                            />
+                            <span className="text-[9px] text-slate-500 font-mono">L</span>
+                          </div>
                         </div>
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Made</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candA.salaryOffer ? candA.salaryOffer / 100000 : ""}
+                              placeholder="Offer (LPA)"
+                              onChange={(e) => {
+                                const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
+                                handleUpdateSalary(candA.id, candA.salaryExpectation || 0, val);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                            />
+                            <span className="text-[9px] text-slate-500 font-mono">L</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Resume viewer A with skill highlighter */}
+                  <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3 shadow-inner">
+                    <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block">Curriculum Vitae Preview</span>
+                    <div className="max-h-[350px] overflow-y-auto pr-1 text-[11px]/relaxed font-mono text-slate-300 space-y-4 scrollbar-thin">
+                      <div className="space-y-1">
+                        <span className="text-[9px] block text-slate-500 uppercase">Education</span>
+                        <p className="text-white text-xs">{candA.education.join(" | ")}</p>
+                      </div>
+                      
+                      <div className="space-y-1 border-t border-slate-900 pt-2">
+                        <span className="text-[9px] block text-slate-500 uppercase">Featured Projects</span>
+                        <ul className="list-disc list-inside space-y-1 pl-1 text-slate-200">
+                          {candA.projects.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="space-y-1 border-t border-slate-900 pt-2">
+                        <span className="text-[9px] block text-slate-500 uppercase">Full Resume Parser Text</span>
+                        <p className="whitespace-pre-wrap text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 leading-relaxed font-sans">
+                          {renderHighlightedText(candA.resumeText, overlappingSkills, uniqueSkillsA, "bg-blue-500/10 text-blue-300 border-blue-500/20", "border-blue-500/20")}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                 </div>
 
-                {/* Resume viewer B with skill highlighter */}
-                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3 shadow-inner">
-                  <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block">Curriculum Vitae Preview</span>
-                  <div className="max-h-[350px] overflow-y-auto pr-1 text-[11px]/relaxed font-mono text-slate-300 space-y-4 scrollbar-thin">
-                    <div className="space-y-1">
-                      <span className="text-[9px] block text-slate-500 uppercase">Education</span>
-                      <p className="text-white text-xs">{candB.education.join(" | ")}</p>
-                    </div>
-                    
-                    <div className="space-y-1 border-t border-slate-900 pt-2">
-                      <span className="text-[9px] block text-slate-500 uppercase">Featured Projects</span>
-                      <ul className="list-disc list-inside space-y-1 pl-1 text-slate-200">
-                        {candB.projects.map((p, i) => (
-                          <li key={i}>{p}</li>
-                        ))}
-                      </ul>
+                {/* CANDIDATE B PANELS */}
+                <div className="space-y-4">
+                  {/* Candidate B Card Header */}
+                  <div className={`p-4 rounded-xl border ${candB.isPriority ? 'bg-amber-500/5 border-amber-500/30' : 'bg-slate-950 border-slate-800'} space-y-3`}>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => handleTogglePriority(e, candB.id, !!candB.isPriority)}
+                            className="focus:outline-none transition-transform hover:scale-110 cursor-pointer shrink-0"
+                            title={candB.isPriority ? "Remove Priority Flag" : "Mark as Priority / High-Potential"}
+                          >
+                            {candB.isPriority ? (
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                            ) : (
+                              <Star className="w-5 h-5 text-slate-600 hover:text-amber-400" />
+                            )}
+                          </button>
+                          <h3 className="text-sm font-bold text-white">
+                            {isBlindMode ? `Anonymous Candidate #${candB.id.slice(-4)}` : candB.name}
+                          </h3>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          {isBlindMode ? "redacted-email@talent.demo" : candB.email}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-xs font-bold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                          {candB.rankingMetrics?.finalScore || 50}% Fit
+                        </span>
+                        <span className="text-[8px] block text-slate-500 font-mono mt-1">AI MATCH SCORE</span>
+                      </div>
                     </div>
 
-                    <div className="space-y-1 border-t border-slate-900 pt-2">
-                      <span className="text-[9px] block text-slate-500 uppercase">Full Resume Parser Text</span>
-                      <p className="whitespace-pre-wrap text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 leading-relaxed font-sans">
-                        {renderHighlightedText(candB.resumeText, overlappingSkills, uniqueSkillsB, "bg-purple-500/10 text-purple-300 border-purple-500/20", "border-purple-500/20")}
-                      </p>
+                    {/* General Highlights */}
+                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-b border-slate-900 py-2">
+                      <div>
+                        <span className="text-slate-500 block text-[8px]">EXPERIENCE:</span>
+                        <span className="text-slate-200 font-bold">{candB.experienceYears} Years</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[8px]">PIPELINE STAGE:</span>
+                        <span className="text-blue-400 font-bold">{candB.stage}</span>
+                      </div>
+                    </div>
+
+                    {/* Editable Salary Blocks */}
+                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-900 space-y-2.5">
+                      <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Financial Profile (Lakhs LPA)</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Expected Salary</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candB.salaryExpectation ? candB.salaryExpectation / 100000 : ""}
+                              placeholder="Expected (LPA)"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) * 100000;
+                                handleUpdateSalary(candB.id, val, candB.salaryOffer);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                            />
+                            <span className="text-[9px] text-slate-500 font-mono">L</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500 block uppercase mb-1">Offer Made</label>
+                          <div className="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 font-mono">₹</span>
+                            <input
+                              type="number"
+                              defaultValue={candB.salaryOffer ? candB.salaryOffer / 100000 : ""}
+                              placeholder="Offer (LPA)"
+                              onChange={(e) => {
+                                const val = e.target.value !== "" ? Number(e.target.value) * 100000 : undefined;
+                                handleUpdateSalary(candB.id, candB.salaryExpectation || 0, val);
+                              }}
+                              className="w-full bg-transparent text-xs font-mono text-white focus:outline-none"
+                            />
+                            <span className="text-[9px] text-slate-500 font-mono">L</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Resume viewer B with skill highlighter */}
+                  <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3 shadow-inner">
+                    <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block">Curriculum Vitae Preview</span>
+                    <div className="max-h-[350px] overflow-y-auto pr-1 text-[11px]/relaxed font-mono text-slate-300 space-y-4 scrollbar-thin">
+                      <div className="space-y-1">
+                        <span className="text-[9px] block text-slate-500 uppercase">Education</span>
+                        <p className="text-white text-xs">{candB.education.join(" | ")}</p>
+                      </div>
+                      
+                      <div className="space-y-1 border-t border-slate-900 pt-2">
+                        <span className="text-[9px] block text-slate-500 uppercase">Featured Projects</span>
+                        <ul className="list-disc list-inside space-y-1 pl-1 text-slate-200">
+                          {candB.projects.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="space-y-1 border-t border-slate-900 pt-2">
+                        <span className="text-[9px] block text-slate-500 uppercase">Full Resume Parser Text</span>
+                        <p className="whitespace-pre-wrap text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 leading-relaxed font-sans">
+                          {renderHighlightedText(candB.resumeText, overlappingSkills, uniqueSkillsB, "bg-purple-500/10 text-purple-300 border-purple-500/20", "border-purple-500/20")}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
                 </div>
 
               </div>
-
-            </div>
+            )}
 
           </div>
         </div>
@@ -2012,11 +2811,21 @@ Recruitment Team`);
                 {/* Export to CSV Button */}
                 <button
                   onClick={handleExportToCSV}
-                  className="px-2 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 rounded-md border border-emerald-500/20 transition-all flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 rounded-md border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
                   title="Export matching candidates list to CSV"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Export
+                  Export CSV
+                </button>
+
+                {/* Export to XLSX Button */}
+                <button
+                  onClick={handleExportToXLSX}
+                  className="px-2 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 rounded-md border border-emerald-500/20 transition-all flex items-center gap-1 cursor-pointer"
+                  title="Export ranked recommendations list to XLSX (Excel)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export XLSX
                 </button>
               </div>
             </div>
